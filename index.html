@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16324f">
+<title>Skid Count</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: one column, phone first. Sticky header with the count's progress, big action buttons,
+   bottom sheet for entering a skid, tabs for Totals / Skids / Setup. Sized for gloves. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --ink: #17212b;
+  --muted: #5d6b78;
+  --line: #d6dde3;
+  --brand: #16324f;        /* header / primary buttons */
+  --brand-ink: #ffffff;
+  --accent: #1f6fd1;       /* links, focus */
+  --p4: #00c714;           /* matches the green P4 frame on the skid labels */
+  --mil20: #ffff31; --mil28: #ff8056; --milother: #a0ffd1;
+  --ok: #1b7f3b; --warn: #b35c00; --bad: #c42b1c;
+  --ok-bg: #e3f4e8; --warn-bg: #fff1dc; --bad-bg: #fde6e3;
+  --font: "Barlow", system-ui, "Segoe UI", Roboto, sans-serif;
+  --num: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #18212a; --ink: #e7edf2; --muted: #9aa8b5; --line: #2a3742;
+    --brand: #1d4166; --brand-ink: #ffffff; --accent: #6aa7f0;
+    --ok: #5fd087; --warn: #f0a650; --bad: #ff7a6b;
+    --ok-bg: #16301f; --warn-bg: #33250f; --bad-bg: #3a1a16;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #18212a; --ink: #e7edf2; --muted: #9aa8b5; --line: #2a3742;
+  --brand: #1d4166; --brand-ink: #ffffff; --accent: #6aa7f0;
+  --ok: #5fd087; --warn: #f0a650; --bad: #ff7a6b;
+  --ok-bg: #16301f; --warn-bg: #33250f; --bad-bg: #3a1a16;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 17px/1.4 var(--font);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  -webkit-tap-highlight-color: transparent;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 720px; margin: 0 auto; }
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; background: var(--brand); color: var(--brand-ink); padding-top: env(safe-area-inset-top, 0px); }
+header .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10px; }
+header h1 { margin: 0; font: 700 22px/1 var(--num); letter-spacing: .04em; text-transform: uppercase; }
+header .stat { margin-left: auto; text-align: right; font-size: 14px; opacity: .9; }
+header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numeric: tabular-nums; }
+
+/* main actions */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-block: 14px 6px; }
+.big { border: 0; border-radius: 12px; min-height: 64px; font-weight: 700; font-size: 19px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.big.primary { background: var(--brand); color: var(--brand-ink); grid-column: 1 / -1; min-height: 76px; font-size: 22px; }
+.big.secondary { background: var(--surface); border: 2px solid var(--line); }
+.big svg { width: 28px; height: 28px; }
+
+/* tabs */
+.tabs { display: flex; gap: 6px; padding-block: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 58px); background: var(--bg); z-index: 4; }
+.tabs button { flex: 1; border: 0; background: transparent; padding: 10px 6px; border-bottom: 3px solid transparent; font-weight: 600; color: var(--muted); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--brand); }
+.panel { padding-block: 6px 120px; }
+
+/* rows */
+.row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.row .name { font-weight: 600; min-width: 0; }
+.row .sub { color: var(--muted); font-size: 14px; min-width: 0; }
+.row .nums { text-align: right; font-family: var(--num); font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 700; line-height: 1.1; }
+.row .nums small { display: block; font: 500 13px var(--font); color: var(--muted); }
+.row button.del { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 10px; font-size: 14px; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; vertical-align: 2px; }
+.chip.p4 { background: var(--p4); color: #062b0a; }
+.chip.csi { background: var(--line); color: var(--ink); }
+.chip.ok { background: var(--ok-bg); color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.bad { background: var(--bad-bg); color: var(--bad); }
+.mil { display: inline-grid; place-items: center; min-width: 30px; height: 22px; border-radius: 5px; font: 700 15px var(--num); color: #222; padding: 0 4px; vertical-align: 1px; }
+.section-title { font: 700 14px var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 18px 0 2px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.note { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-block: 10px; }
+.note h3 { margin: 0 0 6px; font-size: 17px; }
+.note p { margin: 6px 0; color: var(--muted); font-size: 15px; }
+.btn { border: 2px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 14px; font-weight: 600; width: 100%; min-height: 52px; }
+.btn.danger { color: var(--bad); }
+.btn-row { display: grid; gap: 10px; margin-top: 10px; }
+
+/* search */
+.search { width: 100%; padding: 14px; border-radius: 10px; border: 2px solid var(--line); background: var(--surface); font-size: 18px; }
+.pick { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 12px 2px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+
+/* sheet (enter yards) */
+.scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .45); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 720px; border-radius: 18px 18px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); max-height: 92vh; overflow-y: auto; }
+.sheet h2 { margin: 0; font: 700 30px/1.05 var(--num); text-transform: uppercase; letter-spacing: .02em; }
+.sheet .meta { color: var(--muted); margin: 4px 0 12px; font-size: 15px; }
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.compare div { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.compare small { display: block; color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.compare b { font: 700 28px/1.1 var(--num); font-variant-numeric: tabular-nums; }
+.qty { display: flex; align-items: center; gap: 10px; }
+.qty input { flex: 1; min-width: 0; font: 700 44px/1 var(--num); text-align: right; padding: 10px 14px; border: 3px solid var(--brand); border-radius: 12px; background: var(--bg); font-variant-numeric: tabular-nums; }
+.qty .unit { font: 700 26px var(--num); color: var(--muted); width: 44px; }
+.warnline { margin: 10px 0 0; font-weight: 600; color: var(--warn); }
+.sheet .btn-row { grid-template-columns: 1fr 1fr; }
+.sheet .btn-row .big { min-height: 60px; }
+.serial { font-size: 14px; color: var(--muted); margin-top: 8px; }
+
+/* camera */
+.cam { position: fixed; inset: 0; background: #000; z-index: 30; display: flex; flex-direction: column; }
+.cam video { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
+.cam .aim { position: absolute; left: 8%; right: 8%; top: 38%; height: 18%; border: 3px solid rgb(255 255 255 / .85); border-radius: 12px; box-shadow: 0 0 0 9999px rgb(0 0 0 / .35); pointer-events: none; }
+.cam .bar { padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; gap: 10px; align-items: center; color: #fff; background: #000; }
+.cam .bar span { flex: 1; font-size: 15px; }
+.cam .bar button { background: #fff; color: #000; border: 0; border-radius: 10px; padding: 14px 22px; font-weight: 700; }
+.cam .hint { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 14px); left: 0; right: 0; text-align: center; color: #fff; font-weight: 600; text-shadow: 0 1px 3px #000; padding-inline: 16px; }
+
+/* toast */
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 10px; z-index: 40; font-weight: 600; max-width: calc(100% - 32px); text-align: center; }
+
+/* confirm */
+.confirm { display: grid; gap: 10px; }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(30px); opacity: .6 } } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Skid Count</h1>
+    <div class="stat"><b id="stSkids">0</b><span id="stLabel">skids counted</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="actions">
+    <button class="big primary" id="btnScan" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
+      Scan skid label
+    </button>
+    <button class="big secondary" id="btnFind" type="button">Find material</button>
+    <button class="big secondary" id="btnType" type="button">Type part#</button>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-totals" aria-selected="true" type="button">Totals</button>
+    <button role="tab" id="tab-skids" aria-selected="false" type="button">Skids</button>
+    <button role="tab" id="tab-setup" aria-selected="false" type="button">Setup</button>
+  </nav>
+
+  <section class="panel" id="panel-totals"></section>
+  <section class="panel" id="panel-skids" hidden></section>
+  <section class="panel" id="panel-setup" hidden></section>
+</main>
+
+<input type="file" id="fileList" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+/* ---------- data ----------
+   list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
+   count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
+*/
+const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
+};
+let list = store.get("skidcount.list", null);
+let count = store.get("skidcount.count", null) || { started: new Date().toISOString(), entries: [] };
+const save = () => { if (!store.set("skidcount.count", count)) toast("Couldn't save on this phone - export soon"); };
+
+const byPart = () => new Map((list?.items || []).map(i => [i.part, i]));
+let items = byPart();
+
+function unitFor(part) {
+  const it = items.get(part);
+  if (it?.unit) return it.unit;
+  if (/^1[23]03-/.test(part)) return "ft";             // bead
+  if (/^1301-(08|14)-/.test(part)) return "ft";         // poly scrim
+  return "yd";
+}
+function info(part) {
+  const it = items.get(part);
+  if (it) return it;
+  const m = part.match(/^12(\d)(\d)-(\d{2})-(\d{2,3})-/);
+  return { part, name: "Not on the list", line: m && m[2] !== "0" ? "P4" : "CSI",
+           mil: m ? String(+m[3]) : "", height: m ? (m[4] === "475" ? "47.5" : m[4]) : "", unit: unitFor(part), last: null, unknown: true };
+}
+function totals() {
+  const t = new Map();
+  for (const e of count.entries) {
+    const r = t.get(e.part) || { qty: 0, skids: 0 };
+    r.qty += e.qty; r.skids += 1; t.set(e.part, r);
+  }
+  return t;
+}
+const fmt = n => n == null ? "–" : Math.round(n).toLocaleString("en-US");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* change vs last week: flags anything that needs a second look */
+function flag(now, last) {
+  if (last == null || last === 0) return now > 0 ? { cls: "warn", text: "New" } : null;
+  if (now == null) return { cls: "bad", text: "Not counted" };
+  if (now > last) return { cls: "warn", text: "Up " + fmt(now - last) };
+  const drop = (last - now) / last;
+  if (drop >= 0.5) return { cls: "bad", text: "Down " + Math.round(drop * 100) + "%" };
+  if (now === last) return { cls: "ok", text: "Same" };
+  return { cls: "ok", text: "Down " + fmt(last - now) };
+}
+function milBadge(it) {
+  if (!it.mil) return "";
+  const c = it.kind === "Textured" ? "var(--surface)" : it.mil === "20" ? "var(--mil20)" : it.mil === "28" ? "var(--mil28)" : "var(--milother)";
+  const label = it.kind === "Textured" ? "TXT" : it.mil;
+  return `<span class="mil" style="background:${c};${it.kind === "Textured" ? "border:2px solid var(--ink);color:var(--ink)" : ""}">${label}</span>`;
+}
+function lineChip(it) { return it.line ? `<span class="chip ${it.line === "P4" ? "p4" : "csi"}">${it.line}</span>` : ""; }
+function desc(it) {
+  const bits = [];
+  if (it.mil) bits.push(it.mil + " mil");
+  if (it.height) bits.push(it.height + "″");
+  if (it.kind && it.kind !== "Poly" && it.kind !== "Bead") bits.push(it.kind);
+  return bits.join(" · ");
+}
+
+/* ---------- rendering ---------- */
+const $ = id => document.getElementById(id);
+function render() {
+  const t = totals();
+  $("stSkids").textContent = count.entries.length;
+  $("stLabel").textContent = (count.entries.length === 1 ? "skid" : "skids") + " · " + t.size + " part#s";
+  renderTotals(t); renderSkids(); renderSetup();
+}
+
+function renderTotals(t) {
+  const p = $("panel-totals");
+  p.innerHTML = "";
+  if (!list) {
+    p.innerHTML = `<div class="note"><h3>Load this week's list first</h3>
+      <p>On the PC, click <b>Start Count</b> in Skid Label Generator. It saves <b>count-list.json</b> to the Inventory Files folder in Google Drive.
+      Then open Setup here and tap <b>Load list</b>.</p>
+      <p>You can still count without it, but you won't see last week's numbers.</p></div>`;
+  }
+  // counted part#s, then ones that had stock last week but aren't counted yet
+  const counted = [...t.entries()].map(([part, r]) => ({ it: info(part), now: r.qty, skids: r.skids }));
+  const missing = (list?.items || []).filter(i => i.last > 0 && !t.has(i.part)).map(i => ({ it: i, now: null, skids: 0 }));
+  if (!counted.length && !missing.length) { if (list) p.innerHTML = `<p class="empty">Nothing counted yet. Tap <b>Scan skid label</b> to start.</p>`; return; }
+  const row = r => {
+    const f = flag(r.now, r.it.last);
+    return `<div class="row">
+      <div><div class="name">${milBadge(r.it)} ${esc(r.it.name)} ${lineChip(r.it)}</div>
+        <div class="sub">${esc(r.it.part)} · ${esc(desc(r.it))}${r.skids ? " · " + r.skids + (r.skids === 1 ? " skid" : " skids") : ""}</div>
+        ${f ? `<span class="chip ${f.cls}">${f.text}</span>` : ""}</div>
+      <div class="nums">${r.now == null ? "–" : fmt(r.now)} <small>${r.it.unit || unitFor(r.it.part)} · last ${fmt(r.it.last)}</small></div>
+    </div>`;
+  };
+  p.innerHTML += (counted.length ? `<div class="section-title">Counted this week</div>` + counted.sort((a, b) => a.it.name.localeCompare(b.it.name)).map(row).join("") : "")
+    + (missing.length ? `<div class="section-title">Had stock last week, not counted yet (${missing.length})</div>` + missing.map(row).join("") : "");
+}
+
+function renderSkids() {
+  const p = $("panel-skids");
+  if (!count.entries.length) { p.innerHTML = `<p class="empty">Each skid you save shows up here, newest first.</p>`; return; }
+  p.innerHTML = count.entries.slice().reverse().map(e => {
+    const it = info(e.part);
+    const time = new Date(e.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return `<div class="row">
+      <div><div class="name">${milBadge(it)} ${esc(it.name)}</div>
+        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}</div></div>
+      <div class="nums">${fmt(e.qty)} <small>${e.unit}</small>
+        <button class="del" type="button" data-del="${e.id}">Remove</button></div>
+    </div>`;
+  }).join("");
+}
+
+function renderSetup() {
+  const p = $("panel-setup");
+  const started = new Date(count.started).toLocaleDateString();
+  p.innerHTML = `
+    <div class="note"><h3>List from the PC</h3>
+      <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made ${esc(new Date(list.made).toLocaleString())}.` : "No list loaded yet."}</p>
+      <button class="btn" type="button" id="btnLoad">Load list (count-list.json)</button></div>
+    <div class="note"><h3>Finish the count</h3>
+      <p>Saves this count as a file. Save it to the <b>Inventory Files</b> folder in Google Drive, then click <b>Finish Count</b> on the PC.</p>
+      <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"}>Export count (${count.entries.length} skids)</button></div>
+    <div class="note"><h3>Start a new count</h3>
+      <p>This count started ${esc(started)}. Starting over clears every skid on this phone. Export first.</p>
+      <div id="newArea"><button class="btn danger" type="button" id="btnNew">Start a new count</button></div></div>`;
+}
+
+/* ---------- entering a skid ---------- */
+let sheetPart = null, sheetSerial = null;
+function openSheet(part) {
+  sheetPart = part; sheetSerial = null;
+  const it = info(part), t = totals().get(part);
+  const unit = it.unit || unitFor(part);
+  const scrim = document.createElement("div");
+  scrim.className = "scrim"; scrim.id = "scrim";
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shName">
+    <div>${milBadge(it)} ${lineChip(it)}</div>
+    <h2 id="shName">${esc(it.name)}</h2>
+    <div class="meta">${esc(part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}</div>
+    <div class="compare">
+      <div><small>Last week</small><b>${fmt(it.last)}</b> ${unit}</div>
+      <div><small>This week so far</small><b>${fmt(t?.qty ?? 0)}</b> ${unit} <small style="display:inline;text-transform:none">${t ? t.skids + (t.skids === 1 ? " skid" : " skids") : ""}</small></div>
+    </div>
+    <label for="qty" style="font-weight:600">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
+    <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
+    <div class="serial" id="shSerial">Full skid? Tap <b>Scan vendor qty</b> and scan the Q barcode on the manufacturer's label.</div>
+    <p class="warnline" id="shWarn" hidden></p>
+    <div class="btn-row">
+      <button class="big secondary" type="button" id="shCancel">Cancel</button>
+      <button class="big secondary" type="button" id="shVendor">Scan vendor qty</button>
+      <button class="big primary" type="button" id="shSave">Save &amp; scan next</button>
+    </div></div>`;
+  document.body.appendChild(scrim);
+  const q = $("qty");
+  setTimeout(() => q.focus(), 50);
+  q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(true); });
+  q.addEventListener("input", () => checkQty(it));
+  $("shCancel").onclick = closeSheet;
+  $("shSave").onclick = () => saveSkid(true);
+  $("shVendor").onclick = () => startScan("vendor");
+  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  if (it.unknown) { $("shWarn").hidden = false; $("shWarn").textContent = "This part# isn't on the list from the PC. It will still be saved and flagged."; }
+}
+function closeSheet() { $("scrim")?.remove(); sheetPart = null; }
+function checkQty(it) {
+  const v = parseFloat($("qty").value);
+  const w = $("shWarn");
+  if (it.unknown) return;
+  // one skid holding more than ~2 full skids is probably a typo
+  if (v > 3000) { w.hidden = false; w.textContent = fmt(v) + " on one skid is a lot. Check the number."; }
+  else w.hidden = true;
+}
+function saveSkid(scanNext) {
+  const v = parseFloat(($("qty").value || "").replace(/,/g, ""));
+  if (!(v > 0)) { $("shWarn").hidden = false; $("shWarn").textContent = "Enter the amount on this skid first."; $("qty").focus(); return; }
+  if (sheetSerial && count.entries.some(e => e.serial === sheetSerial)) {
+    $("shWarn").hidden = false; $("shWarn").textContent = "This vendor serial is already counted. Remove the other entry on the Skids tab if it's a mistake."; return;
+  }
+  const part = sheetPart;
+  count.entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), part, qty: v, unit: info(part).unit || unitFor(part),
+                       serial: sheetSerial, how: "scan", t: new Date().toISOString() });
+  save(); closeSheet(); render();
+  toast(`Saved ${fmt(v)} ${unitFor(part)} · ${info(part).name}`);
+  if (scanNext && camSupported()) setTimeout(() => startScan("label"), 400);
+}
+
+/* ---------- camera / barcodes ---------- */
+let camMode = null, stream = null, detector = null, zxing = null, scanTimer = null;
+function camMsg(t) { const m = document.getElementById("camMsg"); if (m) m.textContent = t; }
+function camSupported() { return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia); }
+
+async function startScan(mode) {
+  camMode = mode;
+  if (!camSupported()) { toast("No camera here. Use Type part# or Find material."); return; }
+  const cam = document.createElement("div");
+  cam.className = "cam"; cam.id = "cam";
+  cam.innerHTML = `<video id="vid" playsinline muted></video><div class="aim"></div>
+    <div class="hint">${mode === "vendor" ? "Fit the whole manufacturer's label in view (it reads the qty and serial barcodes)" : "Aim at the barcode on your skid label"}</div>
+    <div class="bar"><span id="camMsg">Starting camera…</span><button type="button" id="camClose">Close</button></div>`;
+  document.body.appendChild(cam);
+  $("camClose").onclick = stopScan;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    const v = $("vid"); v.srcObject = stream; await v.play();
+    camMsg("Looking for a barcode…");
+    if ("BarcodeDetector" in window) {
+      detector = new BarcodeDetector({ formats: ["code_128", "code_39", "qr_code", "data_matrix", "pdf417"] });
+      loopDetector(v);
+    } else {
+      await loadZxing();
+      loopZxing(v);
+    }
+  } catch (err) {
+    camMsg("Camera blocked: " + (err.message || err) + ". Allow camera access for this site.");
+  }
+}
+function stopScan() {
+  clearTimeout(scanTimer); scanTimer = null;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; $("cam")?.remove();
+}
+async function loopDetector(v) {
+  if (!stream) return;
+  try {
+    // The whole manufacturer's label can be in the frame: handle the serial (4S) before the qty (Q),
+    // since reading the qty closes the camera.
+    const codes = (await detector.detect(v)).map(c => String(c.rawValue || "").trim().toUpperCase());
+    codes.sort((a, b) => (/^(4S|S)\d/.test(b) ? 1 : 0) - (/^(4S|S)\d/.test(a) ? 1 : 0));
+    for (const c of codes) if (handleCode(c)) return;
+  } catch {}
+  scanTimer = setTimeout(() => loopDetector(v), 120);
+}
+function loadZxing() {
+  if (window.ZXing) return Promise.resolve();
+  return new Promise((ok, bad) => {
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js";
+    s.onload = ok; s.onerror = () => bad(new Error("barcode reader didn't load (no internet?)"));
+    document.head.appendChild(s);
+  });
+}
+function loopZxing(v) {
+  if (!stream) return;
+  zxing = zxing || new ZXing.MultiFormatReader();
+  const canvas = document.createElement("canvas");
+  const tick = () => {
+    if (!stream) return;
+    try {
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(v, 0, 0);
+      const src = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+      const res = zxing.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(src)));
+      if (res && handleCode(res.getText())) return;
+    } catch {}
+    scanTimer = setTimeout(tick, 150);
+  };
+  tick();
+}
+
+/* Our skid label barcode = the part# by itself. Manufacturer master labels use
+   data-identifier prefixes: Q = quantity, 4S / S = serial, P = their art name. */
+function handleCode(raw) {
+  const text = String(raw || "").trim().toUpperCase();
+  if (navigator.vibrate) try { navigator.vibrate(60); } catch {}
+  if (PART_RX.test(text)) {
+    if (camMode === "vendor") { camMsg("That's your skid label. Scan the Q barcode on the manufacturer's label."); return false; }
+    stopScan(); openSheet(text); return true;
+  }
+  const q = text.match(/^Q\s*([0-9]+(?:\.[0-9]+)?)/);
+  if (q) {
+    if (camMode !== "vendor" || !sheetPart) { camMsg("That's the manufacturer's qty. Scan YOUR skid label first."); return false; }
+    stopScan(); $("qty").value = String(+q[1]); checkQty(info(sheetPart));
+    $("shSerial").innerHTML = `Qty <b>${fmt(+q[1])}</b> filled in from the manufacturer's label.`;
+    return true;
+  }
+  const s = text.match(/^(?:4S|S)\s*([0-9A-Z]{5,})$/);
+  if (s) {
+    if (camMode === "vendor" && sheetPart) {
+      sheetSerial = s[1];
+      camMsg("Serial " + s[1] + " saved with this skid. Now scan the Q barcode.");
+      $("shSerial").innerHTML = `Vendor serial <b>${esc(s[1])}</b>.`;
+      return false;
+    }
+    camMsg("That's the manufacturer's serial. Scan YOUR skid label first.");
+    return false;
+  }
+  camMsg("Read “" + text.slice(0, 30) + "”. That isn't a part# or a qty barcode.");
+  return false;
+}
+
+/* ---------- find / type ---------- */
+function openFinder(typeMode) {
+  const scrim = document.createElement("div");
+  scrim.className = "scrim"; scrim.id = "scrim";
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Find material">
+    <input class="search" id="q" ${typeMode ? 'inputmode="numeric" placeholder="Part#, e.g. 1211-20-39-1026"' : 'placeholder="Pattern, part# or 2P#"'} autocomplete="off">
+    <div id="results"></div>
+    <div class="btn-row" style="grid-template-columns:1fr"><button class="big secondary" type="button" id="fCancel">Cancel</button></div></div>`;
+  document.body.appendChild(scrim);
+  $("fCancel").onclick = closeSheet;
+  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  const q = $("q"), res = $("results");
+  const show = () => {
+    const s = q.value.trim().toLowerCase();
+    const typed = q.value.trim().toUpperCase();
+    let html = "";
+    if (PART_RX.test(typed)) html += `<button class="pick" type="button" data-part="${esc(typed)}"><span class="name">Use ${esc(typed)}</span><span></span></button>`;
+    const hits = (list?.items || []).filter(i => !s || (i.name + " " + i.part + " " + (i.vendor || "")).toLowerCase().includes(s)).slice(0, 40);
+    html += hits.map(i => `<button class="pick" type="button" data-part="${esc(i.part)}">
+        <span class="name">${milBadge(i)} ${esc(i.name)} ${lineChip(i)}</span><span class="sub">last ${fmt(i.last)}</span>
+        <span class="sub">${esc(i.part)} · ${esc(desc(i))}${i.vendor ? " · " + esc(i.vendor) : ""}</span><span></span></button>`).join("");
+    res.innerHTML = html || `<p class="empty">${list ? "No match." : "Load the list in Setup to search by pattern."}</p>`;
+  };
+  q.addEventListener("input", show);
+  q.addEventListener("keydown", e => { if (e.key === "Enter") { const t = q.value.trim().toUpperCase(); if (PART_RX.test(t)) { closeSheet(); openSheet(t); } } });
+  res.addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) { closeSheet(); openSheet(b.dataset.part); } });
+  show(); setTimeout(() => q.focus(), 50);
+}
+
+/* ---------- files ---------- */
+$("fileList").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const data = JSON.parse(await f.text());
+    if (!Array.isArray(data.items)) throw new Error("this isn't a count list");
+    list = data; items = byPart(); store.set("skidcount.list", list); render();
+    toast(`Loaded ${list.items.length} materials`);
+  } catch (err) { toast("Couldn't load that file: " + err.message); }
+});
+async function exportCount() {
+  const t = totals();
+  const out = { app: "skid-count", version: 1, exported: new Date().toISOString(), started: count.started,
+                listMade: list?.made ?? null, sheet: list?.sheet ?? null,
+                totals: Object.fromEntries([...t].map(([p, r]) => [p, { qty: r.qty, unit: unitFor(p), skids: r.skids }])),
+                entries: count.entries };
+  const d = new Date(), name = `count-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
+  const file = new File([JSON.stringify(out, null, 1)], name, { type: "application/json" });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); toast("Count shared"); return; }
+  } catch (err) { if (err.name === "AbortError") return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  toast("Saved " + name + " to Downloads");
+}
+
+/* ---------- wiring ---------- */
+function showTab(name) {
+  for (const n of ["totals", "skids", "setup"]) { $("tab-" + n).setAttribute("aria-selected", n === name); $("panel-" + n).hidden = n !== name; }
+}
+for (const n of ["totals", "skids", "setup"]) $("tab-" + n).onclick = () => showTab(n);
+$("btnScan").onclick = () => startScan("label");
+$("btnFind").onclick = () => openFinder(false);
+$("btnType").onclick = () => openFinder(true);
+document.addEventListener("click", e => {
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    const i = count.entries.findIndex(x => x.id === del.dataset.del);
+    if (i >= 0) { const [gone] = count.entries.splice(i, 1); save(); render(); toast(`Removed ${fmt(gone.qty)} ${gone.unit}`); }
+    return;
+  }
+  if (e.target.id === "btnLoad") $("fileList").click();
+  if (e.target.id === "btnExport") exportCount();
+  if (e.target.id === "btnNew") {
+    $("newArea").innerHTML = `<div class="confirm"><b>Clear all ${count.entries.length} skids on this phone?</b>
+      <button class="btn danger" type="button" id="btnNewYes">Yes, start over</button><button class="btn" type="button" id="btnNewNo">Keep counting</button></div>`;
+  }
+  if (e.target.id === "btnNewNo") renderSetup();
+  if (e.target.id === "btnNewYes") { count = { started: new Date().toISOString(), entries: [] }; save(); render(); showTab("totals"); toast("New count started"); }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") { if ($("cam")) stopScan(); else closeSheet(); } });
+
+let toastTimer;
+function toast(msg) {
+  document.querySelector(".toast")?.remove(); clearTimeout(toastTimer);
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; t.setAttribute("role", "status");
+  document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 2600);
+}
+// keep the screen on while counting, if the phone allows it
+async function wake() { try { await navigator.wakeLock?.request("screen"); } catch {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
+wake();
+render();
+</script>
+</body>
+</html>
