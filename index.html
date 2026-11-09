@@ -45,6 +45,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--ink); font: 17px/1.4 var(--font);
@@ -62,6 +63,18 @@ header .wrap { display: flex; align-items: center; gap: 12px; padding-block: 10p
 header h1 { margin: 0; font: 700 22px/1 var(--num); letter-spacing: .04em; text-transform: uppercase; }
 header .stat { margin-left: auto; text-align: right; font-size: 14px; opacity: .9; }
 header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numeric: tabular-nums; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding-block: 0 10px; }
+.modes button { border: 0; border-radius: 9px; padding: 10px 6px; font-weight: 700; font-size: 17px; background: rgb(255 255 255 / .12); color: var(--brand-ink); }
+.modes button[aria-pressed="true"] { background: var(--brand-ink); color: var(--brand); }
+.found { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: baseline; margin: 6px 0 12px; }
+.found dt { color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.found dd { margin: 0; font-weight: 600; min-width: 0; }
+.vin { font: 700 34px/1 var(--num); width: 100%; padding: 8px 12px; border: 3px solid var(--brand); border-radius: 12px; background: var(--bg); letter-spacing: .03em; text-transform: uppercase; }
+.reading { display: flex; align-items: center; gap: 10px; color: var(--muted); font-weight: 600; margin: 6px 0; }
+.cam .snap { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); width: 76px; height: 76px; border-radius: 50%; border: 5px solid #fff; background: rgb(255 255 255 / .25); }
+.cam .got { position: absolute; left: 16px; right: 16px; top: calc(env(safe-area-inset-top, 0px) + 54px); display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.cam .got span { background: rgb(0 0 0 / .65); color: #fff; border-radius: 999px; padding: 4px 10px; font-size: 14px; font-weight: 600; }
+.cam .got span.on { background: var(--ok); }
 
 /* main actions */
 .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-block: 14px 6px; }
@@ -71,7 +84,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .big svg { width: 28px; height: 28px; }
 
 /* tabs */
-.tabs { display: flex; gap: 6px; padding-block: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 58px); background: var(--bg); z-index: 4; }
+.tabs { display: flex; gap: 6px; padding-block: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 112px); background: var(--bg); z-index: 4; }
 .tabs button { flex: 1; border: 0; background: transparent; padding: 10px 6px; border-bottom: 3px solid transparent; font-weight: 600; color: var(--muted); }
 .tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--brand); }
 .panel { padding-block: 6px 120px; }
@@ -144,9 +157,26 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
     <h1>Skid Count</h1>
     <div class="stat"><b id="stSkids">0</b><span id="stLabel">skids counted</span></div>
   </div>
+  <div class="wrap modes" role="group" aria-label="Mode">
+    <button type="button" id="modeReceive" aria-pressed="false">Receiving</button>
+    <button type="button" id="modeCount" aria-pressed="true">Inventory</button>
+  </div>
 </header>
 
-<main class="wrap">
+<!-- ============ RECEIVING: log manufacturer labels, export the list of skid labels to print ============ -->
+<main class="wrap" id="view-receive" hidden>
+  <div class="actions">
+    <button class="big primary" id="btnRecScan" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><rect x="7" y="8" width="10" height="8" rx="1"/></svg>
+      Scan manufacturer label
+    </button>
+    <button class="big secondary" id="btnRecType" type="button" style="grid-column:1/-1">Type 2P# or part#</button>
+  </div>
+  <section class="panel" id="panel-receive"></section>
+</main>
+
+<!-- ============ INVENTORY: weekly count ============ -->
+<main class="wrap" id="view-count">
   <div class="actions">
     <button class="big primary" id="btnScan" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
@@ -241,9 +271,14 @@ function desc(it) {
 const $ = id => document.getElementById(id);
 function render() {
   const t = totals();
-  $("stSkids").textContent = count.entries.length;
-  $("stLabel").textContent = (count.entries.length === 1 ? "skid" : "skids") + " · " + t.size + " part#s";
-  renderTotals(t); renderSkids(); renderSetup();
+  if (mode === "receive") {
+    $("stSkids").textContent = received.entries.length;
+    $("stLabel").textContent = (received.entries.length === 1 ? "skid" : "skids") + " received";
+  } else {
+    $("stSkids").textContent = count.entries.length;
+    $("stLabel").textContent = (count.entries.length === 1 ? "skid" : "skids") + " · " + t.size + " part#s";
+  }
+  renderTotals(t); renderSkids(); renderSetup(); renderReceive();
 }
 
 function renderTotals(t) {
@@ -371,11 +406,14 @@ async function startScan(mode) {
   if (!camSupported()) { toast("No camera here. Use Type part# or Find material."); return; }
   const cam = document.createElement("div");
   cam.className = "cam"; cam.id = "cam";
-  cam.innerHTML = `<video id="vid" playsinline muted></video><div class="aim"></div>
-    <div class="hint">${mode === "vendor" ? "Fit the whole manufacturer's label in view (it reads the qty and serial barcodes)" : "Aim at the barcode on your skid label"}</div>
+  const receiving = mode === "receive";
+  cam.innerHTML = `<video id="vid" playsinline muted></video>${receiving ? "" : '<div class="aim"></div>'}
+    <div class="hint">${receiving ? "Fit the whole manufacturer's label on screen. Hold still." : mode === "vendor" ? "Fit the whole manufacturer's label in view (it reads the qty and serial barcodes)" : "Aim at the barcode on your skid label"}</div>
+    ${receiving ? '<div class="got" id="got"><span>Qty …</span><span>Serial …</span></div><button class="snap" type="button" id="camSnap" aria-label="Take the photo now"></button>' : ""}
     <div class="bar"><span id="camMsg">Starting camera…</span><button type="button" id="camClose">Close</button></div>`;
   document.body.appendChild(cam);
   $("camClose").onclick = stopScan;
+  if (receiving) $("camSnap").onclick = () => snapAndRead();
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
     const v = $("vid"); v.srcObject = stream; await v.play();
@@ -402,8 +440,14 @@ async function loopDetector(v) {
     // The whole manufacturer's label can be in the frame: handle the serial (4S) before the qty (Q),
     // since reading the qty closes the camera.
     const codes = (await detector.detect(v)).map(c => String(c.rawValue || "").trim().toUpperCase());
-    codes.sort((a, b) => (/^(4S|S)\d/.test(b) ? 1 : 0) - (/^(4S|S)\d/.test(a) ? 1 : 0));
-    for (const c of codes) if (handleCode(c)) return;
+    if (camMode === "receive") {
+      for (const c of codes) receiveBarcode(c);
+      if (!stream) return;     // the photo was taken
+      camMsg(rec.qty && rec.serial ? "Got both barcodes" : "Reading barcodes… or tap the white button to take the photo");
+    } else {
+      codes.sort((a, b) => (/^(4S|S)\d/.test(b) ? 1 : 0) - (/^(4S|S)\d/.test(a) ? 1 : 0));
+      for (const c of codes) if (handleCode(c)) return;
+    }
   } catch {}
   scanTimer = setTimeout(() => loopDetector(v), 120);
 }
@@ -428,7 +472,8 @@ function loopZxing(v) {
       ctx.drawImage(v, 0, 0);
       const src = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
       const res = zxing.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(src)));
-      if (res && handleCode(res.getText())) return;
+      if (res && camMode === "receive") { receiveBarcode(res.getText().trim().toUpperCase()); if (!stream) return; }
+      else if (res && handleCode(res.getText())) return;
     } catch {}
     scanTimer = setTimeout(tick, 150);
   };
@@ -458,6 +503,15 @@ function handleCode(raw) {
       camMsg("Serial " + s[1] + " saved with this skid. Now scan the Q barcode.");
       $("shSerial").innerHTML = `Vendor serial <b>${esc(s[1])}</b>.`;
       return false;
+    }
+    // A skid logged in Receiving: its serial alone says what it is and how much is on it
+    const known = serials[s[1]];
+    if (known && camMode === "label") {
+      stopScan(); openSheet(known.part);
+      sheetSerial = s[1];
+      if (known.qty) { $("qty").value = String(known.qty); checkQty(info(known.part)); }
+      $("shSerial").innerHTML = `Serial <b>${esc(s[1])}</b> from Receiving${known.qty ? ` · full skid was <b>${fmt(known.qty)}</b>` : ""}. Change the amount if it's been opened.`;
+      return true;
     }
     camMsg("That's the manufacturer's serial. Scan YOUR skid label first.");
     return false;
@@ -522,12 +576,210 @@ async function exportCount() {
   toast("Saved " + name + " to Downloads");
 }
 
+/* ================= RECEIVING =================
+   received = { started, entries: [{ id, vendor, part, qty, unit, serial, art, size, t }] }
+   serials  = { "36111254": { part, qty } }  kept after the received list is cleared, so a full skid can be counted
+              later by scanning just its manufacturer serial. */
+let received = store.get("skidcount.received", null) || { started: new Date().toISOString(), entries: [] };
+let serials = store.get("skidcount.serials", {});
+const saveRec = () => { store.set("skidcount.received", received); store.set("skidcount.serials", serials); };
+const VENDOR_RX = /^2[PU]\d{4,5}$/;
+const partsForVendor = v => (list?.items || []).filter(i => i.vendor === v);
+
+function renderReceive() {
+  const p = $("panel-receive");
+  const n = received.entries.length;
+  let html = "";
+  if (!list) html += `<div class="note"><h3>Load the list for material names</h3><p>Inventory &gt; Setup &gt; Load list. Without it, skids are still logged by 2P# and the PC fills in the rest.</p></div>`;
+  html += `<div class="note"><h3>${n ? `${n} skid${n === 1 ? "" : "s"} received` : "Nothing received yet"}</h3>
+    <p>Scan each manufacturer's label as the skids come off the truck. Then export, and on the PC click <b>Load Receiving</b> in Skid Label Generator to print one skid label per skid.</p>
+    <div class="btn-row"><button class="btn" type="button" id="btnRecExport" ${n ? "" : "disabled"}>Export for printing (${n})</button>
+    <div id="recClearArea"><button class="btn danger" type="button" id="btnRecClear" ${n ? "" : "disabled"}>Clear received list</button></div></div></div>`;
+  if (n) {
+    html += `<div class="section-title">Received (newest first)</div>` + received.entries.slice().reverse().map(e => {
+      const it = e.part ? info(e.part) : null;
+      return `<div class="row"><div>
+          <div class="name">${it ? milBadge(it) + " " + esc(it.name) + " " + lineChip(it) : esc(e.vendor) + " <span class='chip warn'>Not matched</span>"}</div>
+          <div class="sub">${esc(e.vendor)}${e.part ? " · " + esc(e.part) : ""}${e.serial ? " · serial " + esc(e.serial) : ""}</div></div>
+        <div class="nums">${e.qty ? fmt(e.qty) : "–"} <small>${e.unit || ""}</small><button class="del" type="button" data-recdel="${e.id}">Remove</button></div></div>`;
+    }).join("");
+  }
+  p.innerHTML = html;
+}
+
+/* Reads one manufacturer's label: barcodes live from the camera (Q qty, 4S serial, P art name),
+   then a still photo for the printed 2P# (text recognition). */
+let rec = null;
+function startReceiveScan() {
+  rec = { qty: null, serial: null, art: null };
+  startScan("receive");
+}
+function receiveBarcode(text) {
+  const q = text.match(/^Q\s*([0-9]+(?:\.[0-9]+)?)/), s = text.match(/^(?:4S|S)\s*([0-9A-Z]{5,})$/), a = text.match(/^P\s*(.+)$/);
+  if (q) rec.qty = +q[1];
+  else if (s) rec.serial = s[1];
+  else if (a && !PART_RX.test(text)) rec.art = a[1].trim();
+  else if (VENDOR_RX.test(text)) rec.vendor = text;
+  const got = $("got");
+  if (got) got.innerHTML = `<span class="${rec.qty ? "on" : ""}">Qty ${rec.qty ? fmt(rec.qty) : "…"}</span><span class="${rec.serial ? "on" : ""}">Serial ${rec.serial || "…"}</span>`;
+  if (rec.qty && rec.serial && !rec.snapping) snapAndRead();     // both barcodes in: take the photo for the 2P#
+}
+async function snapAndRead() {
+  const v = $("vid");
+  if (!v || !rec) return;
+  rec.snapping = true;
+  const canvas = document.createElement("canvas");
+  canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+  canvas.getContext("2d").drawImage(v, 0, 0);
+  // one more barcode pass on the still, in case the live view missed one
+  try { if (detector) for (const c of await detector.detect(canvas)) receiveBarcode(String(c.rawValue || "").trim().toUpperCase()); } catch {}
+  stopScan();
+  openReceiveSheet({ ...rec, reading: true });
+  const text = await readText(canvas);
+  if ($("recSheet")) fillFromText(text);
+}
+
+/* Text recognition (Tesseract, loaded the first time it's needed, then cached by the phone) */
+let ocrWorker = null;
+function loadScript(src) {
+  return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("couldn't load " + src)); document.head.appendChild(s); });
+}
+async function readText(canvas) {
+  try {
+    if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+    ocrWorker = ocrWorker || await Tesseract.createWorker("eng");
+    const { data } = await ocrWorker.recognize(canvas);
+    return data.text || "";
+  } catch (err) { return ""; }
+}
+/* Pull the 2P# and "0.02000 X 39.000" (mil x width) out of the label text */
+function parseLabelText(text) {
+  const t = text.toUpperCase();
+  let vendor = null;
+  const m = t.match(/\b2\s?[PU]\s?([0-9OILS]{4,5})\b/);
+  if (m) vendor = t.substr(m.index, m[0].length).replace(/\s/g, "").slice(0, 2) + m[1].replace(/O/g, "0").replace(/[IL]/g, "1").replace(/S/g, "5");
+  // thickness in inches, e.g. 0.02000 = 20 mil: the mil is the 2nd-3rd digits after the point,
+  // which survives the usual misreads ("9.82000" still gives 20)
+  const d = t.match(/[0-9O][.,]([0-9O]{5})\s*[X×]\s*(\d{2})(?:[.,](\d))?/);
+  const size = d ? { mil: String(+d[1].replace(/O/g, "0").slice(1, 3)), height: d[3] && d[3] !== "0" ? d[2] + "." + d[3] : String(+d[2]) } : null;
+  return { vendor, size };
+}
+function fillFromText(text) {
+  const { vendor, size } = parseLabelText(text);
+  const box = $("recVendor");
+  if (vendor && !box.value) box.value = vendor;
+  if (size) $("recSheet").dataset.size = JSON.stringify(size);
+  $("recReading").hidden = true;
+  if (!vendor) { $("recWarn").hidden = false; $("recWarn").textContent = "Couldn't read the 2P# from the photo. Type it in."; box.focus(); }
+  matchVendor();
+}
+
+function openReceiveSheet(r) {
+  closeSheet();
+  const scrim = document.createElement("div");
+  scrim.className = "scrim"; scrim.id = "scrim";
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="recTitle" id="recSheet">
+    <h2 id="recTitle">Received skid</h2>
+    <div class="reading" id="recReading" ${r.reading ? "" : "hidden"}>Reading the 2P# off the label…</div>
+    <label for="recVendor" style="font-weight:600">2P# (or part#)</label>
+    <input class="vin" id="recVendor" autocomplete="off" autocapitalize="characters" placeholder="2P____" value="${esc(r.vendor || "")}">
+    <div id="recMatch" class="meta"></div>
+    <dl class="found">
+      <dt>Qty</dt><dd><input id="recQty" inputmode="decimal" value="${r.qty ?? ""}" style="font:700 22px var(--num);width:9ch;padding:4px 8px;border:2px solid var(--line);border-radius:8px;background:var(--bg)"> <span id="recUnit">yd</span></dd>
+      <dt>Serial</dt><dd>${esc(r.serial || "–")}</dd>
+      ${r.art ? `<dt>Their name</dt><dd>${esc(r.art)}</dd>` : ""}
+    </dl>
+    <p class="warnline" id="recWarn" hidden></p>
+    <div class="btn-row">
+      <button class="big secondary" type="button" id="recCancel">Cancel</button>
+      <button class="big primary" type="button" id="recSave">Save &amp; scan next</button>
+    </div></div>`;
+  document.body.appendChild(scrim);
+  $("recSheet").dataset.serial = r.serial || "";
+  $("recSheet").dataset.art = r.art || "";
+  $("recVendor").addEventListener("input", matchVendor);
+  $("recCancel").onclick = closeSheet;
+  $("recSave").onclick = saveReceived;
+  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  matchVendor();
+  if (!r.reading) setTimeout(() => $("recVendor").focus(), 50);
+}
+/* Shows which material the 2P# is, and warns when the label's mil/width doesn't match it */
+function matchVendor() {
+  const code = $("recVendor").value.trim().toUpperCase().replace(/\s/g, "");
+  const out = $("recMatch"), sheet = $("recSheet");
+  let part = null;
+  if (PART_RX.test(code)) part = code;
+  else if (VENDOR_RX.test(code)) {
+    const hits = partsForVendor(code);
+    if (hits.length === 1) part = hits[0].part;
+    else if (hits.length > 1) {
+      out.innerHTML = "Listed under " + hits.map(h => `<button class="del" type="button" data-pickpart="${h.part}">${esc(h.part)}</button>`).join(" ") + " — tap the right one.";
+      sheet.dataset.part = ""; return;
+    }
+  }
+  sheet.dataset.part = part || "";
+  if (part) {
+    const it = info(part);
+    $("recUnit").textContent = it.unit || unitFor(part);
+    let warn = "";
+    const size = sheet.dataset.size ? JSON.parse(sheet.dataset.size) : null;
+    if (size && it.mil && (size.mil !== it.mil || (it.height && size.height !== it.height)))
+      warn = ` <span class="chip bad">Label says ${size.mil} mil × ${size.height}″</span>`;
+    out.innerHTML = `${milBadge(it)} <b>${esc(it.name)}</b> ${lineChip(it)} · ${esc(part)} · ${esc(desc(it))}${warn}`;
+  } else out.textContent = code ? (list ? "Not on the list. It's still saved, and the PC looks it up." : "") : "";
+}
+function saveReceived() {
+  const sheet = $("recSheet");
+  const vendor = $("recVendor").value.trim().toUpperCase().replace(/\s/g, "");
+  const w = $("recWarn");
+  if (!VENDOR_RX.test(vendor) && !PART_RX.test(vendor)) { w.hidden = false; w.textContent = "Enter the 2P# (like 2P4540) or the part#."; $("recVendor").focus(); return; }
+  const serial = sheet.dataset.serial || null;
+  if (serial && received.entries.some(e => e.serial === serial)) { w.hidden = false; w.textContent = "This skid (serial " + serial + ") is already in the received list."; return; }
+  const part = sheet.dataset.part || (PART_RX.test(vendor) ? vendor : null);
+  const qty = parseFloat(($("recQty").value || "").replace(/,/g, "")) || null;
+  const e = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), vendor: VENDOR_RX.test(vendor) ? vendor : (part ? info(part).vendor || "" : ""),
+              part, qty, unit: part ? (info(part).unit || unitFor(part)) : "yd", serial, art: sheet.dataset.art || null,
+              size: sheet.dataset.size ? JSON.parse(sheet.dataset.size) : null, t: new Date().toISOString() };
+  received.entries.push(e);
+  if (serial && part) serials[serial] = { part, qty };
+  saveRec(); closeSheet(); render();
+  toast(`Received ${part ? info(part).name : vendor}${qty ? " · " + fmt(qty) + " " + e.unit : ""}`);
+  if (camSupported()) setTimeout(startReceiveScan, 400);
+}
+async function exportReceived() {
+  const out = { app: "skid-count", kind: "receiving", version: 1, exported: new Date().toISOString(), entries: received.entries };
+  const d = new Date(), name = `receiving-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}-${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}.json`;
+  await shareFile(name, out, "Receiving");
+}
+async function shareFile(name, obj, what) {
+  const file = new File([JSON.stringify(obj, null, 1)], name, { type: "application/json" });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); toast(what + " shared"); return; }
+  } catch (err) { if (err.name === "AbortError") return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  toast("Saved " + name + " to Downloads");
+}
+
+let mode = store.get("skidcount.mode", "count");
+function setMode(m) {
+  mode = m; store.set("skidcount.mode", m);
+  $("view-receive").hidden = m !== "receive"; $("view-count").hidden = m !== "count";
+  $("modeReceive").setAttribute("aria-pressed", m === "receive"); $("modeCount").setAttribute("aria-pressed", m === "count");
+  render();
+}
+
 /* ---------- wiring ---------- */
 function showTab(name) {
   for (const n of ["totals", "skids", "setup"]) { $("tab-" + n).setAttribute("aria-selected", n === name); $("panel-" + n).hidden = n !== name; }
 }
 for (const n of ["totals", "skids", "setup"]) $("tab-" + n).onclick = () => showTab(n);
 $("btnScan").onclick = () => startScan("label");
+$("btnRecScan").onclick = startReceiveScan;
+$("btnRecType").onclick = () => openReceiveSheet({});
+$("modeReceive").onclick = () => setMode("receive");
+$("modeCount").onclick = () => setMode("count");
 $("btnFind").onclick = () => openFinder(false);
 $("btnType").onclick = () => openFinder(true);
 document.addEventListener("click", e => {
@@ -537,6 +789,21 @@ document.addEventListener("click", e => {
     if (i >= 0) { const [gone] = count.entries.splice(i, 1); save(); render(); toast(`Removed ${fmt(gone.qty)} ${gone.unit}`); }
     return;
   }
+  const rdel = e.target.closest("[data-recdel]");
+  if (rdel) {
+    const i = received.entries.findIndex(x => x.id === rdel.dataset.recdel);
+    if (i >= 0) { const [gone] = received.entries.splice(i, 1); if (gone.serial) delete serials[gone.serial]; saveRec(); render(); toast("Removed " + (gone.vendor || gone.part)); }
+    return;
+  }
+  const pick = e.target.closest("[data-pickpart]");
+  if (pick) { $("recVendor").value = pick.dataset.pickpart; matchVendor(); return; }
+  if (e.target.id === "btnRecExport") exportReceived();
+  if (e.target.id === "btnRecClear") {
+    $("recClearArea").innerHTML = `<div class="confirm"><b>Clear all ${received.entries.length} received skids? Export them first.</b>
+      <button class="btn danger" type="button" id="btnRecClearYes">Yes, clear</button><button class="btn" type="button" id="btnRecClearNo">Keep them</button></div>`;
+  }
+  if (e.target.id === "btnRecClearNo") renderReceive();
+  if (e.target.id === "btnRecClearYes") { received = { started: new Date().toISOString(), entries: [] }; saveRec(); render(); toast("Received list cleared"); }
   if (e.target.id === "btnLoad") $("fileList").click();
   if (e.target.id === "btnExport") exportCount();
   if (e.target.id === "btnNew") {
@@ -558,7 +825,7 @@ function toast(msg) {
 async function wake() { try { await navigator.wakeLock?.request("screen"); } catch {} }
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
 wake();
-render();
+setMode(mode);
 </script>
 </body>
 </html>
