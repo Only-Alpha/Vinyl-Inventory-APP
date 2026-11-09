@@ -406,20 +406,22 @@ async function startScan(mode) {
   if (!camSupported()) { toast("No camera here. Use Type part# or Find material."); return; }
   const cam = document.createElement("div");
   cam.className = "cam"; cam.id = "cam";
-  const receiving = mode === "receive";
-  cam.innerHTML = `<video id="vid" playsinline muted></video>${receiving ? "" : '<div class="aim"></div>'}
-    <div class="hint">${receiving ? "Fit the whole manufacturer's label on screen. Hold still." : mode === "vendor" ? "Fit the whole manufacturer's label in view (it reads the qty and serial barcodes)" : "Aim at the barcode on your skid label"}</div>
-    ${receiving ? '<div class="got" id="got"><span>Qty …</span><span>Serial …</span></div><button class="snap" type="button" id="camSnap" aria-label="Take the photo now"></button>' : ""}
+  const receiving = mode === "receive", photo = receiving || mode === "vendor";
+  cam.innerHTML = `<video id="vid" playsinline muted></video>${photo ? "" : '<div class="aim"></div>'}
+    <div class="hint">${receiving ? "Fit the whole manufacturer's label on screen, then tap the white button" : mode === "vendor" ? "Fit the whole manufacturer's label on screen, then tap the white button" : "Aim at the barcode on your skid label"}</div>
+    ${receiving ? '<div class="got" id="got"><span>Qty …</span><span>Serial …</span></div>' : ""}${photo ? '<button class="snap" type="button" id="camSnap" aria-label="Take the photo now"></button>' : ""}
     <div class="bar"><span id="camMsg">Starting camera…</span><button type="button" id="camClose">Close</button></div>`;
   document.body.appendChild(cam);
   $("camClose").onclick = stopScan;
-  if (receiving) $("camSnap").onclick = () => snapAndRead();
+  if (photo) $("camSnap").onclick = () => (receiving ? snapAndRead() : snapVendor());
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    // ask for 4K: a whole manufacturer's label in view needs the extra detail for its thin bars
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
+    try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}
     const v = $("vid"); v.srcObject = stream; await v.play();
     camMsg("Looking for a barcode…");
     if ("BarcodeDetector" in window) {
-      detector = new BarcodeDetector({ formats: ["code_128", "code_39", "qr_code", "data_matrix", "pdf417"] });
+      detector = new BarcodeDetector({ formats: ["code_128", "code_39", "code_93", "codabar", "itf", "qr_code", "data_matrix", "pdf417"] });
       loopDetector(v);
     } else {
       await loadZxing();
@@ -443,7 +445,7 @@ async function loopDetector(v) {
     if (camMode === "receive") {
       for (const c of codes) receiveBarcode(c);
       if (!stream) return;     // the photo was taken
-      camMsg(rec.qty && rec.serial ? "Got both barcodes" : "Reading barcodes… or tap the white button to take the photo");
+      camMsg(rec.qty && rec.serial ? "Got both barcodes" : "Tap the white button to take the photo");
     } else {
       codes.sort((a, b) => (/^(4S|S)\d/.test(b) ? 1 : 0) - (/^(4S|S)\d/.test(a) ? 1 : 0));
       for (const c of codes) if (handleCode(c)) return;
@@ -611,32 +613,113 @@ function renderReceive() {
    then a still photo for the printed 2P# (text recognition). */
 let rec = null;
 function startReceiveScan() {
-  rec = { qty: null, serial: null, art: null };
+  rec = { qty: null, serial: null, art: null, raw: [] };
   startScan("receive");
 }
+/* Manufacturer's master label barcodes. Usually the data identifier is part of the barcode
+   (Q1130.0, 4S36111254, PCREATION...), but some printers leave it out, so bare values are accepted too. */
 function receiveBarcode(text) {
-  const q = text.match(/^Q\s*([0-9]+(?:\.[0-9]+)?)/), s = text.match(/^(?:4S|S)\s*([0-9A-Z]{5,})$/), a = text.match(/^P\s*(.+)$/);
+  if (!text || !rec) return;
+  if (!rec.raw.includes(text)) rec.raw.push(text);
+  const q = text.match(/^Q\s*([0-9]+(?:\.[0-9]+)?)$/), s = text.match(/^\d?S\s*([0-9A-Z]{5,})$/), a = text.match(/^P\s*(.+)$/);
   if (q) rec.qty = +q[1];
   else if (s) rec.serial = s[1];
-  else if (a && !PART_RX.test(text)) rec.art = a[1].trim();
   else if (VENDOR_RX.test(text)) rec.vendor = text;
-  const got = $("got");
-  if (got) got.innerHTML = `<span class="${rec.qty ? "on" : ""}">Qty ${rec.qty ? fmt(rec.qty) : "…"}</span><span class="${rec.serial ? "on" : ""}">Serial ${rec.serial || "…"}</span>`;
+  else if (PART_RX.test(text)) rec.vendor = text;
+  else if (a) rec.art = a[1].trim();
+  else if (/^\d{1,5}\.\d+$/.test(text) && !rec.qty) rec.qty = +text;         // bare qty: 1130.0
+  else if (/^\d{7,12}$/.test(text) && !rec.serial) rec.serial = text;        // bare serial: 36111254
+  showGot();
   if (rec.qty && rec.serial && !rec.snapping) snapAndRead();     // both barcodes in: take the photo for the 2P#
 }
-async function snapAndRead() {
+function showGot() {
+  const got = $("got");
+  if (got) got.innerHTML = `<span class="${rec.qty ? "on" : ""}">Qty ${rec.qty ? fmt(rec.qty) : "…"}</span><span class="${rec.serial ? "on" : ""}">Serial ${rec.serial || "…"}</span>`
+    + (rec.raw.length ? `<span>${rec.raw.length} barcode${rec.raw.length === 1 ? "" : "s"} read</span>` : "");
+}
+/* Takes a full-resolution photo (much sharper than the live video, so small barcodes read),
+   reads every barcode in it, then reads the printed text for the 2P#. */
+/* Full-resolution still from the camera (img), plus a copy shrunk to ~2400 px wide (canvas) for the
+   strip reader and text recognition. Stops the camera. */
+async function takeStill() {
   const v = $("vid");
-  if (!v || !rec) return;
-  rec.snapping = true;
-  const canvas = document.createElement("canvas");
-  canvas.width = v.videoWidth; canvas.height = v.videoHeight;
-  canvas.getContext("2d").drawImage(v, 0, 0);
-  // one more barcode pass on the still, in case the live view missed one
-  try { if (detector) for (const c of await detector.detect(canvas)) receiveBarcode(String(c.rawValue || "").trim().toUpperCase()); } catch {}
+  camMsg("Taking the photo…");
+  let img = null;
+  try {
+    const track = stream?.getVideoTracks()[0];
+    if (track && "ImageCapture" in window) img = await createImageBitmap(await new ImageCapture(track).takePhoto());
+  } catch {}
+  if (!img) {
+    const c = document.createElement("canvas");
+    c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
+    img = c;
+  }
   stopScan();
+  const scale = Math.min(1, 2400 / img.width);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
+  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+  return { img, canvas };
+}
+async function detectAll(img) {
+  try {
+    if (!("BarcodeDetector" in window)) return [];
+    const det = new BarcodeDetector({ formats: ["code_39", "code_128", "code_93", "codabar", "itf", "ean_13", "upc_a", "data_matrix", "qr_code", "pdf417"] });
+    return (await det.detect(img)).map(c => String(c.rawValue || "").trim().toUpperCase());
+  } catch { return []; }
+}
+async function snapAndRead() {
+  if (!$("vid") || !rec || rec.snapping === "busy") return;
+  rec.snapping = "busy";
+  const { img, canvas } = await takeStill();
   openReceiveSheet({ ...rec, reading: true });
+  for (const c of await detectAll(img)) receiveBarcode(c);
+  if (!rec.qty || !rec.serial) await stripScan(canvas, receiveBarcode, () => rec.qty && rec.serial);
+  if ($("recSheet")) updateReceiveSheet(rec);
   const text = await readText(canvas);
   if ($("recSheet")) fillFromText(text);
+}
+/* Inventory > Scan vendor qty: same photo reading, feeding the open skid */
+async function snapVendor() {
+  const { img, canvas } = await takeStill();
+  const codes = await detectAll(img);
+  const has = () => codes.some(c => /^Q\s*\d/.test(c)) && codes.some(c => /^\d?S\s*\w{5,}$/.test(c));
+  if (!has()) await stripScan(canvas, c => { if (!codes.includes(c)) codes.push(c); }, has);
+  codes.sort((a, b) => (/^\d?S\s*\w/.test(b) ? 1 : 0) - (/^\d?S\s*\w/.test(a) ? 1 : 0));   // serial before qty
+  let filled = false;
+  for (const c of codes) if (handleCode(c)) { filled = true; break; }
+  if (!filled) toast(codes.length ? "No qty barcode found (read: " + codes.join(", ") + "). Type the yards." : "No barcodes could be read. Move closer, or type the yards.");
+}
+/* Backup reader: the label's barcodes are horizontal Code 39 strips, so slice the photo into overlapping
+   horizontal bands and decode each one on its own (finds barcodes the phone's scanner skipped). */
+async function stripScan(canvas, onCode, done) {
+  try { await loadZxing(); } catch { return; }
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.CODE_39, ZXing.BarcodeFormat.CODE_128]);
+  const reader = new ZXing.MultiFormatReader(); reader.setHints(hints);
+  const band = Math.round(canvas.height * 0.08), step = Math.round(band / 2);
+  const strip = document.createElement("canvas"); strip.width = canvas.width; strip.height = band;
+  const g = strip.getContext("2d", { willReadFrequently: true });
+  for (let y = 0; y + band <= canvas.height; y += step) {
+    g.drawImage(canvas, 0, y, canvas.width, band, 0, 0, canvas.width, band);
+    try {
+      const res = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(strip))));
+      onCode(res.getText().trim().toUpperCase());
+    } catch {}
+    if (done()) break;
+    if (y % (step * 6) === 0) await new Promise(r => setTimeout(r));   // keep the screen responsive
+  }
+}
+
+/* barcodes from the full photo can arrive after the sheet opened */
+function updateReceiveSheet(r) {
+  if (r.qty && !$("recQty").value) $("recQty").value = r.qty;
+  const sheet = $("recSheet");
+  if (r.serial) { sheet.dataset.serial = r.serial; $("recSerial").textContent = r.serial; }
+  if (r.art) sheet.dataset.art = r.art;
+  if (r.vendor && !$("recVendor").value) { $("recVendor").value = r.vendor; matchVendor(); }
+  $("recRaw").textContent = r.raw.length ? "Barcodes read: " + r.raw.join("  ·  ") : "No barcodes could be read from the photo. Type the qty, or move closer and try again.";
 }
 
 /* Text recognition (Tesseract, loaded the first time it's needed, then cached by the phone) */
@@ -686,9 +769,10 @@ function openReceiveSheet(r) {
     <div id="recMatch" class="meta"></div>
     <dl class="found">
       <dt>Qty</dt><dd><input id="recQty" inputmode="decimal" value="${r.qty ?? ""}" style="font:700 22px var(--num);width:9ch;padding:4px 8px;border:2px solid var(--line);border-radius:8px;background:var(--bg)"> <span id="recUnit">yd</span></dd>
-      <dt>Serial</dt><dd>${esc(r.serial || "–")}</dd>
+      <dt>Serial</dt><dd id="recSerial">${esc(r.serial || "–")}</dd>
       ${r.art ? `<dt>Their name</dt><dd>${esc(r.art)}</dd>` : ""}
     </dl>
+    <p class="serial" id="recRaw"></p>
     <p class="warnline" id="recWarn" hidden></p>
     <div class="btn-row">
       <button class="big secondary" type="button" id="recCancel">Cancel</button>
