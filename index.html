@@ -168,7 +168,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   <div class="actions">
     <button class="big primary" id="btnRecScan" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><rect x="7" y="8" width="10" height="8" rx="1"/></svg>
-      Scan manufacturer label
+      Scan manufacturer's label
     </button>
     <button class="big secondary" id="btnRecType" type="button" style="grid-column:1/-1">Type 2P# or part#</button>
   </div>
@@ -180,7 +180,11 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   <div class="actions">
     <button class="big primary" id="btnScan" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
-      Scan skid label
+      Scan ALPHA label
+    </button>
+    <button class="big primary" id="btnMfr" type="button" style="background:var(--surface);color:var(--brand);border:3px solid var(--brand)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
+      Scan manufacturer's label
     </button>
     <button class="big secondary" id="btnFind" type="button">Find material</button>
     <button class="big secondary" id="btnType" type="button">Type part#</button>
@@ -293,7 +297,7 @@ function renderTotals(t) {
   // counted part#s, then ones that had stock last week but aren't counted yet
   const counted = [...t.entries()].map(([part, r]) => ({ it: info(part), now: r.qty, skids: r.skids }));
   const missing = (list?.items || []).filter(i => i.last > 0 && !t.has(i.part)).map(i => ({ it: i, now: null, skids: 0 }));
-  if (!counted.length && !missing.length) { if (list) p.innerHTML = `<p class="empty">Nothing counted yet. Tap <b>Scan skid label</b> to start.</p>`; return; }
+  if (!counted.length && !missing.length) { if (list) p.innerHTML = `<p class="empty">Nothing counted yet. Tap <b>Scan ALPHA label</b> or <b>Scan manufacturer's label</b> to start.</p>`; return; }
   const row = r => {
     const f = flag(r.now, r.it.last);
     return `<div class="row">
@@ -372,6 +376,13 @@ function openSheet(part) {
   $("shVendor").onclick = () => startScan("vendor");
   scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
   if (it.unknown) { $("shWarn").hidden = false; $("shWarn").textContent = "This part# isn't on the list from the PC. It will still be saved and flagged."; }
+  if (mfrPending) {      // opened from a photo of the manufacturer's label
+    const m = mfrPending; mfrPending = null;
+    sheetSerial = m.serial || null;
+    if (m.qty) { q.value = String(m.qty); checkQty(it); }
+    $("shSerial").innerHTML = `From the manufacturer's label: ${m.vendor ? "<b>" + esc(m.vendor) + "</b> · " : ""}qty <b>${m.qty ? fmt(m.qty) : "not read"}</b> · serial <b>${esc(m.serial || "not read")}</b>.`
+      + (m.qty ? " Change the amount if the skid has been opened." : "");
+  }
 }
 function closeSheet() { $("scrim")?.remove(); sheetPart = null; }
 function checkQty(it) {
@@ -406,20 +417,20 @@ async function startScan(mode) {
   if (!camSupported()) { toast("No camera here. Use Type part# or Find material."); return; }
   const cam = document.createElement("div");
   cam.className = "cam"; cam.id = "cam";
-  const receiving = mode === "receive", photo = receiving || mode === "vendor";
+  const receiving = mode === "receive", photo = receiving || mode === "vendor" || mode === "mfr";
   cam.innerHTML = `<video id="vid" playsinline muted></video>${photo ? "" : '<div class="aim"></div>'}
-    <div class="hint">${receiving ? "Fit the whole manufacturer's label on screen, then tap the white button" : mode === "vendor" ? "Fit the whole manufacturer's label on screen, then tap the white button" : "Aim at the barcode on your skid label"}</div>
+    <div class="hint">${receiving ? "Fit the whole manufacturer's label on screen, then tap the white button" : mode === "vendor" || mode === "mfr" ? "Fit the whole manufacturer's label on screen, then tap the white button" : "Aim at the barcode on your skid label"}</div>
     ${receiving ? '<div class="got" id="got"><span>Qty …</span><span>Serial …</span></div>' : ""}${photo ? '<button class="snap" type="button" id="camSnap" aria-label="Take the photo now"></button>' : ""}
     <div class="bar"><span id="camMsg">Starting camera…</span><button type="button" id="camClose">Close</button></div>`;
   document.body.appendChild(cam);
   $("camClose").onclick = stopScan;
-  if (photo) $("camSnap").onclick = () => (receiving ? snapAndRead() : snapVendor());
+  if (photo) $("camSnap").onclick = () => (receiving ? snapAndRead() : mode === "mfr" ? snapMfr() : snapVendor());
   try {
     // ask for 4K: a whole manufacturer's label in view needs the extra detail for its thin bars
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
     try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}
     const v = $("vid"); v.srcObject = stream; await v.play();
-    camMsg("Looking for a barcode…");
+    camMsg(mode === "mfr" || mode === "vendor" || mode === "receive" ? "Tap the white button to take the photo" : "Looking for a barcode…");
     if ("BarcodeDetector" in window) {
       detector = new BarcodeDetector({ formats: ["code_128", "code_39", "code_93", "codabar", "itf", "qr_code", "data_matrix", "pdf417"] });
       loopDetector(v);
@@ -446,7 +457,7 @@ async function loopDetector(v) {
       for (const c of codes) receiveBarcode(c);
       if (!stream) return;     // the photo was taken
       camMsg(rec.qty && rec.serial ? "Got both barcodes" : "Tap the white button to take the photo");
-    } else {
+    } else if (camMode !== "mfr") {      // manufacturer's label: only the photo is read
       codes.sort((a, b) => (/^(4S|S)\d/.test(b) ? 1 : 0) - (/^(4S|S)\d/.test(a) ? 1 : 0));
       for (const c of codes) if (handleCode(c)) return;
     }
@@ -475,7 +486,7 @@ function loopZxing(v) {
       const src = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
       const res = zxing.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(src)));
       if (res && camMode === "receive") { receiveBarcode(res.getText().trim().toUpperCase()); if (!stream) return; }
-      else if (res && handleCode(res.getText())) return;
+      else if (res && camMode !== "mfr" && handleCode(res.getText())) return;
     } catch {}
     scanTimer = setTimeout(tick, 150);
   };
@@ -523,7 +534,7 @@ function handleCode(raw) {
 }
 
 /* ---------- find / type ---------- */
-function openFinder(typeMode) {
+function openFinder(typeMode, initial = "") {
   const scrim = document.createElement("div");
   scrim.className = "scrim"; scrim.id = "scrim";
   scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="Find material">
@@ -531,7 +542,7 @@ function openFinder(typeMode) {
     <div id="results"></div>
     <div class="btn-row" style="grid-template-columns:1fr"><button class="big secondary" type="button" id="fCancel">Cancel</button></div></div>`;
   document.body.appendChild(scrim);
-  $("fCancel").onclick = closeSheet;
+  $("fCancel").onclick = () => { mfrPending = null; closeSheet(); };
   scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
   const q = $("q"), res = $("results");
   const show = () => {
@@ -548,6 +559,7 @@ function openFinder(typeMode) {
   q.addEventListener("input", show);
   q.addEventListener("keydown", e => { if (e.key === "Enter") { const t = q.value.trim().toUpperCase(); if (PART_RX.test(t)) { closeSheet(); openSheet(t); } } });
   res.addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) { closeSheet(); openSheet(b.dataset.part); } });
+  q.value = initial;
   show(); setTimeout(() => q.focus(), 50);
 }
 
@@ -647,7 +659,7 @@ async function takeStill() {
   let img = null;
   try {
     const track = stream?.getVideoTracks()[0];
-    if (track && "ImageCapture" in window) img = await createImageBitmap(await new ImageCapture(track).takePhoto());
+    if (track && "ImageCapture" in window) img = await createImageBitmap(await new ImageCapture(track).takePhoto(), { imageOrientation: "from-image" });
   } catch {}
   if (!img) {
     const c = document.createElement("canvas");
@@ -676,9 +688,54 @@ async function snapAndRead() {
   for (const c of await detectAll(img)) receiveBarcode(c);
   if (!rec.qty || !rec.serial) await stripScan(canvas, receiveBarcode, () => rec.qty && rec.serial);
   if ($("recSheet")) updateReceiveSheet(rec);
-  const text = await readText(canvas);
-  if ($("recSheet")) fillFromText(text);
+  if ($("recSheet")) { const ph = $("recPhoto"); ph.src = thumb(canvas); ph.hidden = false; }
+  const r = await readLabelText(canvas, a => { if (a && $("recReading")) $("recReading").textContent = `Reading the 2P#… trying the photo turned ${a}°`; });
+  if ($("recSheet")) fillFromText(r);
 }
+function thumb(canvas) {
+  const s = Math.min(1, 600 / canvas.width), t = document.createElement("canvas");
+  t.width = Math.round(canvas.width * s); t.height = Math.round(canvas.height * s);
+  t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
+  return t.toDataURL("image/jpeg", 0.7);
+}
+/* Inventory > Scan manufacturer's label: one photo of the whole label -> which material (2P# text, or a serial
+   logged in Receiving) + qty + serial, then the skid opens with the yards filled in. */
+let mfrPending = null;
+async function snapMfr() {
+  const { img, canvas } = await takeStill();
+  busy("Reading the manufacturer's label…");
+  rec = { qty: null, serial: null, art: null, raw: [], snapping: "busy" };
+  for (const c of await detectAll(img)) receiveBarcode(c);
+  if (!rec.qty || !rec.serial) await stripScan(canvas, receiveBarcode, () => rec.qty && rec.serial);
+  let part = null, vendor = rec.vendor && VENDOR_RX.test(rec.vendor) ? rec.vendor : null, choices = [];
+  if (rec.serial && serials[rec.serial]) part = serials[rec.serial].part;
+  if (!part && !vendor) {
+    const r = await readLabelText(canvas, a => busy(a ? `Reading the 2P#… trying the photo turned ${a}°` : "Reading the 2P#…"));
+    vendor = r.vendor;
+  }
+  if (!part && vendor) {
+    choices = partsForVendor(vendor);
+    if (choices.length === 1) part = choices[0].part;
+  }
+  busy(null);
+  mfrPending = { qty: rec.qty, serial: rec.serial, vendor, raw: rec.raw.slice() };
+  if (part) { openSheet(part); return; }
+  openFinder(false, vendor || "");
+  toast(!vendor ? "Couldn't read the 2P# from the photo. Pick the material."
+      : choices.length > 1 ? vendor + " is on more than one part#. Pick the right one."
+      : vendor + " isn't on the list. Pick the material.");
+}
+function busy(msg) {
+  let b = $("busy");
+  if (!msg) { b?.remove(); return; }
+  if (!b) {
+    b = document.createElement("div"); b.className = "scrim"; b.id = "busy"; b.style.alignItems = "center";
+    b.innerHTML = `<div class="sheet" style="border-radius:16px;width:auto;max-width:90%;text-align:center"><p id="busyMsg" class="reading" style="justify-content:center;margin:8px"></p></div>`;
+    document.body.appendChild(b);
+  }
+  $("busyMsg").textContent = msg;
+}
+
 /* Inventory > Scan vendor qty: same photo reading, feeding the open skid */
 async function snapVendor() {
   const { img, canvas } = await takeStill();
@@ -727,13 +784,44 @@ let ocrWorker = null;
 function loadScript(src) {
   return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("couldn't load " + src)); document.head.appendChild(s); });
 }
+let ocrError = "";
 async function readText(canvas) {
   try {
     if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
     ocrWorker = ocrWorker || await Tesseract.createWorker("eng");
     const { data } = await ocrWorker.recognize(canvas);
+    ocrError = "";
     return data.text || "";
-  } catch (err) { return ""; }
+  } catch (err) { ocrError = "Text reader failed: " + (err?.message || err); return ""; }
+}
+/* Grayscale + contrast stretch (helps with glare on the shrink-wrap), turned by `angle` degrees */
+function prepForText(src, angle) {
+  const turn = angle === 90 || angle === 270;
+  const c = document.createElement("canvas");
+  c.width = turn ? src.height : src.width; c.height = turn ? src.width : src.height;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.translate(c.width / 2, c.height / 2); g.rotate(angle * Math.PI / 180);
+  g.drawImage(src, -src.width / 2, -src.height / 2);
+  const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
+  let lo = 255, hi = 0;
+  for (let i = 0; i < p.length; i += 16) { const y = (p[i] * 3 + p[i + 1] * 6 + p[i + 2]) / 10; if (y < lo) lo = y; if (y > hi) hi = y; }
+  const k = 255 / Math.max(1, hi - lo);
+  for (let i = 0; i < p.length; i += 4) { const y = ((p[i] * 3 + p[i + 1] * 6 + p[i + 2]) / 10 - lo) * k; p[i] = p[i + 1] = p[i + 2] = y; }
+  g.putImageData(d, 0, 0);
+  return c;
+}
+/* Reads the label text; if no 2P# turns up, tries the photo turned sideways and upside down
+   (phone photos are sometimes stored rotated). */
+async function readLabelText(canvas, progress) {
+  let text = "";
+  for (const angle of [0, 90, 270, 180]) {
+    progress?.(angle);
+    text = await readText(prepForText(canvas, angle));
+    const parsed = parseLabelText(text);
+    if (parsed.vendor) return { ...parsed, text, angle };
+    if (ocrError) break;
+  }
+  return { ...parseLabelText(text), text, angle: null };
 }
 /* Pull the 2P# and "0.02000 X 39.000" (mil x width) out of the label text */
 function parseLabelText(text) {
@@ -747,13 +835,19 @@ function parseLabelText(text) {
   const size = d ? { mil: String(+d[1].replace(/O/g, "0").slice(1, 3)), height: d[3] && d[3] !== "0" ? d[2] + "." + d[3] : String(+d[2]) } : null;
   return { vendor, size };
 }
-function fillFromText(text) {
-  const { vendor, size } = parseLabelText(text);
+function fillFromText(r) {
+  if (typeof r === "string") r = { ...parseLabelText(r), text: r };
+  const { vendor, size } = r;
   const box = $("recVendor");
   if (vendor && !box.value) box.value = vendor;
   if (size) $("recSheet").dataset.size = JSON.stringify(size);
   $("recReading").hidden = true;
   if (!vendor) { $("recWarn").hidden = false; $("recWarn").textContent = "Couldn't read the 2P# from the photo. Type it in."; box.focus(); }
+  // what the text reader saw, for checking a miss
+  const seen = (r.text || "").replace(/\s+/g, " ").trim();
+  $("recText").innerHTML = `<summary>What the text reader saw</summary>${esc(ocrError || (seen ? seen.slice(0, 400) : "No text at all."))}`
+    + (r.angle ? `<br><i>Found it with the photo turned ${r.angle}°.</i>` : "");
+  $("recText").hidden = false;
   matchVendor();
 }
 
@@ -773,6 +867,8 @@ function openReceiveSheet(r) {
       ${r.art ? `<dt>Their name</dt><dd>${esc(r.art)}</dd>` : ""}
     </dl>
     <p class="serial" id="recRaw"></p>
+    <img id="recPhoto" alt="The photo that was read" hidden style="display:block;max-width:100%;max-height:180px;border-radius:8px;margin:6px 0;border:1px solid var(--line)">
+    <details class="serial" id="recText" hidden></details>
     <p class="warnline" id="recWarn" hidden></p>
     <div class="btn-row">
       <button class="big secondary" type="button" id="recCancel">Cancel</button>
@@ -860,6 +956,7 @@ function showTab(name) {
 }
 for (const n of ["totals", "skids", "setup"]) $("tab-" + n).onclick = () => showTab(n);
 $("btnScan").onclick = () => startScan("label");
+$("btnMfr").onclick = () => startScan("mfr");
 $("btnRecScan").onclick = startReceiveScan;
 $("btnRecType").onclick = () => openReceiveSheet({});
 $("modeReceive").onclick = () => setMode("receive");
