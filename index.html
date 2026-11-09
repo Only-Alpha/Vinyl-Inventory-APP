@@ -186,7 +186,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
       Scan manufacturer's label
     </button>
-    <button class="big secondary" id="btnFind" type="button">Find material</button>
+    <button class="big secondary" id="btnFind" type="button">Pick material</button>
     <button class="big secondary" id="btnType" type="button">Type part#</button>
   </div>
 
@@ -425,6 +425,7 @@ async function startScan(mode) {
   document.body.appendChild(cam);
   $("camClose").onclick = stopScan;
   if (photo) $("camSnap").onclick = () => (receiving ? snapAndRead() : mode === "mfr" ? snapMfr() : snapVendor());
+  if (receiving || mode === "mfr") ensureOcr();     // load the text reader while the label is being framed
   try {
     // ask for 4K: a whole manufacturer's label in view needs the extra detail for its thin bars
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 3840 }, height: { ideal: 2160 } }, audio: false });
@@ -649,47 +650,99 @@ function showGot() {
   if (got) got.innerHTML = `<span class="${rec.qty ? "on" : ""}">Qty ${rec.qty ? fmt(rec.qty) : "…"}</span><span class="${rec.serial ? "on" : ""}">Serial ${rec.serial || "…"}</span>`
     + (rec.raw.length ? `<span>${rec.raw.length} barcode${rec.raw.length === 1 ? "" : "s"} read</span>` : "");
 }
-/* Takes a full-resolution photo (much sharper than the live video, so small barcodes read),
-   reads every barcode in it, then reads the printed text for the 2P#. */
-/* Full-resolution still from the camera (img), plus a copy shrunk to ~2400 px wide (canvas) for the
-   strip reader and text recognition. Stops the camera. */
-async function takeStill() {
-  const v = $("vid");
-  camMsg("Taking the photo…");
-  let img = null;
+/* ---- reading a manufacturer's label from one shot ----
+   1. Grab the current frame of the 4K video: instant, and always upright as shown on screen.
+   2. Find the barcodes in it (phone's scanner, then the strip reader for any it missed). Only if the frame
+      isn't sharp enough does it take a full-resolution photo, once.
+   3. The 2P# is printed just right of the qty barcode, so only that small patch is read as text (fast).
+      The whole label, and turned versions, are read only when the patch has no 2P#. */
+function frameOf(v) {
+  const c = document.createElement("canvas");
+  c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
+  return c;
+}
+function shrink(img, max = 2400) {
+  if (img.width <= max) return img;
+  const s = max / img.width, c = document.createElement("canvas");
+  c.width = max; c.height = Math.round(img.height * s); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+async function photoOf(track) {
+  try { if ("ImageCapture" in window) return await createImageBitmap(await new ImageCapture(track).takePhoto(), { imageOrientation: "from-image" }); } catch {}
+  return null;
+}
+/* every barcode in the image as { text, box } (box in image pixels, null when unknown) */
+async function findCodes(img, want) {
+  const codes = [];
+  const add = (text, box) => { text = String(text || "").trim().toUpperCase(); if (text && !codes.some(c => c.text === text)) codes.push({ text, box }); };
   try {
-    const track = stream?.getVideoTracks()[0];
-    if (track && "ImageCapture" in window) img = await createImageBitmap(await new ImageCapture(track).takePhoto(), { imageOrientation: "from-image" });
+    if ("BarcodeDetector" in window) {
+      const det = new BarcodeDetector({ formats: ["code_39", "code_128", "code_93", "codabar", "itf", "ean_13", "upc_a", "data_matrix", "qr_code", "pdf417"] });
+      for (const c of await det.detect(img)) {
+        const b = c.boundingBox;
+        add(c.rawValue, b ? { x: b.x, y: b.y, w: b.width, h: b.height } : null);
+      }
+    }
   } catch {}
-  if (!img) {
-    const c = document.createElement("canvas");
-    c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0);
-    img = c;
+  if (!want(codes)) {
+    const small = shrink(img), s = img.width / small.width;
+    await stripScan(small, (t, b) => add(t, b && { x: b.x * s, y: b.y * s, w: b.w * s, h: b.h * s }), () => want(codes));
+  }
+  return codes;
+}
+const hasQtyAndSerial = codes => codes.some(c => /^Q\s*\d/.test(c.text)) && codes.some(c => /^\d?S\s*\w{5,}$/.test(c.text));
+
+/* takes the shot and stops the camera; returns the image and its barcodes */
+async function shoot(want) {
+  const v = $("vid"), track = stream?.getVideoTracks()[0];
+  camMsg("Reading…");
+  let img = frameOf(v), codes = await findCodes(img, want);
+  if (!want(codes) && track) {
+    camMsg("Taking a sharper photo…");
+    const p = await photoOf(track);
+    if (p) { const more = await findCodes(p, want); if (more.length >= codes.length) { img = p; codes = more; } }
   }
   stopScan();
-  const scale = Math.min(1, 2400 / img.width);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(img.width * scale); canvas.height = Math.round(img.height * scale);
-  canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-  return { img, canvas };
+  return { img, codes };
 }
-async function detectAll(img) {
-  try {
-    if (!("BarcodeDetector" in window)) return [];
-    const det = new BarcodeDetector({ formats: ["code_39", "code_128", "code_93", "codabar", "itf", "ean_13", "upc_a", "data_matrix", "qr_code", "pdf417"] });
-    return (await det.detect(img)).map(c => String(c.rawValue || "").trim().toUpperCase());
-  } catch { return []; }
+
+/* The patch of text around the 2P#: right of the qty barcode, from a little above it to a little below
+   (ORDER / 2P# / size / color lines). Null when the qty barcode's position isn't known. */
+function textPatch(img, codes) {
+  const q = codes.find(c => /^Q\s*\d/.test(c.text) && c.box);
+  if (!q) return null;
+  const b = q.box;
+  if (b.h > b.w * 1.2) return null;                 // label turned sideways: read the whole photo instead
+  // on the O'Sullivan master label the ORDER / 2P# / size / COLOR / FINISH lines sit right of the qty barcode,
+  // starting about one barcode-height above it
+  const x0 = Math.max(0, b.x + b.w * 1.1), x1 = Math.min(img.width, b.x + b.w * 2.2);
+  const y0 = Math.max(0, b.y - b.h * 1.2), y1 = Math.min(img.height, b.y + b.h * 0.9);
+  if (x1 - x0 < 40 || y1 - y0 < 20) return null;
+  const s = Math.min(2, Math.max(1, 700 / (x1 - x0)));    // enlarge only small text
+  const c = document.createElement("canvas");
+  c.width = Math.round((x1 - x0) * s); c.height = Math.round((y1 - y0) * s);
+  c.getContext("2d").drawImage(img, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+  return c;
 }
+async function readLabel(img, codes, progress) {
+  const patch = textPatch(img, codes);
+  if (patch) {
+    progress?.("Reading the 2P#…");
+    const text = await readText(prepForText(patch, 0), 6);   // 6 = one block of text: faster than finding the layout
+    const p = parseLabelText(text);
+    if (p.vendor) return { ...p, text, angle: 0 };
+  }
+  return readLabelText(shrink(img), a => progress?.(a ? `Reading the 2P#… trying the photo turned ${a}°` : "Reading the whole label…"));
+}
+
 async function snapAndRead() {
   if (!$("vid") || !rec || rec.snapping === "busy") return;
   rec.snapping = "busy";
-  const { img, canvas } = await takeStill();
+  const { img, codes } = await shoot(hasQtyAndSerial);
   openReceiveSheet({ ...rec, reading: true });
-  for (const c of await detectAll(img)) receiveBarcode(c);
-  if (!rec.qty || !rec.serial) await stripScan(canvas, receiveBarcode, () => rec.qty && rec.serial);
-  if ($("recSheet")) updateReceiveSheet(rec);
-  if ($("recSheet")) { const ph = $("recPhoto"); ph.src = thumb(canvas); ph.hidden = false; }
-  const r = await readLabelText(canvas, a => { if (a && $("recReading")) $("recReading").textContent = `Reading the 2P#… trying the photo turned ${a}°`; });
+  for (const c of codes) receiveBarcode(c.text);
+  if ($("recSheet")) { updateReceiveSheet(rec); const ph = $("recPhoto"); ph.src = thumb(img); ph.hidden = false; }
+  const r = await readLabel(img, codes, m => { if ($("recReading")) $("recReading").textContent = m; });
   if ($("recSheet")) fillFromText(r);
 }
 function thumb(canvas) {
@@ -698,21 +751,17 @@ function thumb(canvas) {
   t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
   return t.toDataURL("image/jpeg", 0.7);
 }
-/* Inventory > Scan manufacturer's label: one photo of the whole label -> which material (2P# text, or a serial
+/* Inventory > Scan manufacturer's label: one shot of the whole label -> which material (2P# text, or a serial
    logged in Receiving) + qty + serial, then the skid opens with the yards filled in. */
 let mfrPending = null;
 async function snapMfr() {
-  const { img, canvas } = await takeStill();
+  const { img, codes } = await shoot(hasQtyAndSerial);
   busy("Reading the manufacturer's label…");
   rec = { qty: null, serial: null, art: null, raw: [], snapping: "busy" };
-  for (const c of await detectAll(img)) receiveBarcode(c);
-  if (!rec.qty || !rec.serial) await stripScan(canvas, receiveBarcode, () => rec.qty && rec.serial);
+  for (const c of codes) receiveBarcode(c.text);
   let part = null, vendor = rec.vendor && VENDOR_RX.test(rec.vendor) ? rec.vendor : null, choices = [];
   if (rec.serial && serials[rec.serial]) part = serials[rec.serial].part;
-  if (!part && !vendor) {
-    const r = await readLabelText(canvas, a => busy(a ? `Reading the 2P#… trying the photo turned ${a}°` : "Reading the 2P#…"));
-    vendor = r.vendor;
-  }
+  if (!part && !vendor) vendor = (await readLabel(img, codes, busy)).vendor;
   if (!part && vendor) {
     choices = partsForVendor(vendor);
     if (choices.length === 1) part = choices[0].part;
@@ -736,19 +785,83 @@ function busy(msg) {
   $("busyMsg").textContent = msg;
 }
 
-/* Inventory > Scan vendor qty: same photo reading, feeding the open skid */
+/* ---- Pick material: Printer (CSI / P4 / Bead & poly) -> type -> pattern ---- */
+const GROUPS = [
+  { name: "20 mil wall", test: i => i.mil === "20" && i.height === "39" },
+  { name: "20 mil floor", test: i => i.mil === "20" && i.height === "72" },
+  { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
+  { name: "28 mil floor", test: i => i.mil === "28" && i.height === "72" },
+  { name: "Textured", test: i => i.kind === "Textured" },
+  { name: "49″ 20 mil wall", test: i => i.mil === "20" && i.height === "49" },
+  { name: "AG 17/13 mil", test: i => (i.mil === "17" && i.height === "47.5") || (i.mil === "13" && i.height === "72") },
+  { name: "AG 13/11 mil", test: i => (i.mil === "13" && i.height === "47.5") || (i.mil === "11" && i.height === "72") },
+  { name: "Bead", test: i => i.kind === "Bead" },
+  { name: "Poly", test: i => i.kind === "Poly" },
+];
+const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : "Bead & poly";
+const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
+let pickMemory = { printer: "", group: "" };
+
+function openPicker() {
+  const all = list?.items || [];
+  if (!all.length) { toast("Load the list in Setup first."); return; }
+  const scrim = document.createElement("div");
+  scrim.className = "scrim"; scrim.id = "scrim";
+  const sel = 'style="width:100%;font:600 19px var(--font);padding:12px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"';
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+    <h2 id="pkTitle">Pick material</h2>
+    <div style="display:grid;gap:12px;margin-top:12px">
+      <label style="display:grid;gap:4px;font-weight:600">Printer<select id="pkPrinter" ${sel}></select></label>
+      <label style="display:grid;gap:4px;font-weight:600">Type<select id="pkGroup" ${sel}></select></label>
+      <label style="display:grid;gap:4px;font-weight:600">Pattern<select id="pkPart" ${sel}></select></label>
+      <div id="pkInfo" class="meta"></div>
+    </div>
+    <div class="btn-row">
+      <button class="big secondary" type="button" id="pkSearch">Search instead</button>
+      <button class="big secondary" type="button" id="pkCancel">Cancel</button>
+      <button class="big primary" type="button" id="pkGo">Enter amount</button>
+    </div></div>`;
+  document.body.appendChild(scrim);
+  const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
+  const opts = (el, values, keep) => {
+    el.innerHTML = values.map(v => `<option value="${esc(v.value)}">${esc(v.label)}</option>`).join("");
+    if (keep && values.some(v => v.value === keep)) el.value = keep;
+  };
+  const printers = ["CSI", "P4", "Bead & poly"].filter(p => all.some(i => printerOf(i) === p));
+  opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
+  const fillGroups = keep => {
+    const names = [...GROUPS.map(g => g.name), "Other"].filter(n => all.some(i => printerOf(i) === P.value && groupOf(i) === n));
+    opts(G, names.map(n => ({ value: n, label: n })), keep);
+    fillParts();
+  };
+  const fillParts = () => {
+    const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.part.localeCompare(b.part));
+    const mixed = new Set(hits.map(i => i.mil + i.height)).size > 1;     // AG groups mix walls and floors
+    opts(T, hits.map(i => ({ value: i.part, label: i.name + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (i.last ? ` (last ${fmt(i.last)})` : "") })));
+    showInfo();
+  };
+  const showInfo = () => { const it = items.get(T.value); $("pkInfo").innerHTML = it ? `${milBadge(it)} ${esc(it.part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}` : ""; };
+  P.onchange = () => fillGroups(); G.onchange = fillParts; T.onchange = showInfo;
+  fillGroups(pickMemory.group);
+  $("pkCancel").onclick = () => { mfrPending = null; closeSheet(); };
+  $("pkSearch").onclick = () => { closeSheet(); openFinder(false); };
+  $("pkGo").onclick = () => { if (!T.value) return; pickMemory = { printer: P.value, group: G.value }; const part = T.value; closeSheet(); openSheet(part); };
+  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+}
+
+/* Inventory > Scan vendor qty: barcodes only, feeding the open skid */
 async function snapVendor() {
-  const { img, canvas } = await takeStill();
-  const codes = await detectAll(img);
-  const has = () => codes.some(c => /^Q\s*\d/.test(c)) && codes.some(c => /^\d?S\s*\w{5,}$/.test(c));
-  if (!has()) await stripScan(canvas, c => { if (!codes.includes(c)) codes.push(c); }, has);
+  const { codes: found } = await shoot(hasQtyAndSerial);
+  const codes = found.map(c => c.text);
   codes.sort((a, b) => (/^\d?S\s*\w/.test(b) ? 1 : 0) - (/^\d?S\s*\w/.test(a) ? 1 : 0));   // serial before qty
   let filled = false;
   for (const c of codes) if (handleCode(c)) { filled = true; break; }
   if (!filled) toast(codes.length ? "No qty barcode found (read: " + codes.join(", ") + "). Type the yards." : "No barcodes could be read. Move closer, or type the yards.");
 }
-/* Backup reader: the label's barcodes are horizontal Code 39 strips, so slice the photo into overlapping
-   horizontal bands and decode each one on its own (finds barcodes the phone's scanner skipped). */
+/* Backup reader: the label's barcodes are horizontal Code 39 strips, so slice the image into overlapping
+   horizontal bands and decode each one on its own (finds barcodes the phone's scanner skipped).
+   onCode(text, box) gets the barcode's position within `canvas`. */
 async function stripScan(canvas, onCode, done) {
   try { await loadZxing(); } catch { return; }
   const hints = new Map();
@@ -762,7 +875,9 @@ async function stripScan(canvas, onCode, done) {
     g.drawImage(canvas, 0, y, canvas.width, band, 0, 0, canvas.width, band);
     try {
       const res = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(strip))));
-      onCode(res.getText().trim().toUpperCase());
+      const xs = (res.getResultPoints() || []).map(p => p.getX());
+      const box = xs.length >= 2 ? { x: Math.min(...xs), y, w: Math.max(...xs) - Math.min(...xs), h: band } : null;
+      onCode(res.getText().trim().toUpperCase(), box);
     } catch {}
     if (done()) break;
     if (y % (step * 6) === 0) await new Promise(r => setTimeout(r));   // keep the screen responsive
@@ -785,11 +900,20 @@ function loadScript(src) {
   return new Promise((ok, bad) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => bad(new Error("couldn't load " + src)); document.head.appendChild(s); });
 }
 let ocrError = "";
-async function readText(canvas) {
-  try {
+/* starts loading the text reader (once); called when the camera opens so it's ready by the time you shoot */
+function ensureOcr() {
+  ocrWorker = ocrWorker || (async () => {
     if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
-    ocrWorker = ocrWorker || await Tesseract.createWorker("eng");
-    const { data } = await ocrWorker.recognize(canvas);
+    return Tesseract.createWorker("eng");
+  })();
+  ocrWorker.catch(() => { ocrWorker = null; });
+  return ocrWorker;
+}
+async function readText(canvas, psm = 3) {
+  try {
+    const worker = await ensureOcr();
+    await worker.setParameters({ tessedit_pageseg_mode: String(psm) });
+    const { data } = await worker.recognize(canvas);
     ocrError = "";
     return data.text || "";
   } catch (err) { ocrError = "Text reader failed: " + (err?.message || err); return ""; }
@@ -961,7 +1085,7 @@ $("btnRecScan").onclick = startReceiveScan;
 $("btnRecType").onclick = () => openReceiveSheet({});
 $("modeReceive").onclick = () => setMode("receive");
 $("modeCount").onclick = () => setMode("count");
-$("btnFind").onclick = () => openFinder(false);
+$("btnFind").onclick = openPicker;
 $("btnType").onclick = () => openFinder(true);
 document.addEventListener("click", e => {
   const del = e.target.closest("[data-del]");
