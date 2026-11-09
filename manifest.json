@@ -1,6 +1,6 @@
 {
-  "name": "Skid Count",
-  "short_name": "Skid Count",
+  "name": "Vinyl Inventory",
+  "short_name": "Vinyl Inventory",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f3f5f7",
