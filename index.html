@@ -900,9 +900,21 @@ const GROUPS = [
   { name: "49″ 20 mil wall", test: i => i.mil === "20" && i.height === "49" },
   { name: "AG 17/13 mil", test: i => (i.mil === "17" && i.height === "47.5") || (i.mil === "13" && i.height === "72") },
   { name: "AG 13/11 mil", test: i => (i.mil === "13" && i.height === "47.5") || (i.mil === "11" && i.height === "72") },
-  { name: "Bead", test: i => i.kind === "Bead" },
+  // bead by type (the type is in the name: "Dark Blue Bead (Uni-Bead)"), then poly
+  { name: "Standard bead", test: i => i.kind === "Bead" && beadType(i) === "Standard" },
+  { name: "Uni-Bead", test: i => i.kind === "Bead" && beadType(i) === "Uni-Bead" },
+  { name: "EW (Esther Williams) bead", test: i => i.kind === "Bead" && beadType(i).startsWith("EW") },
+  { name: "Custom bead", test: i => i.kind === "Bead" && beadType(i) === "Custom" },
+  { name: "Other bead", test: i => i.kind === "Bead" },
   { name: "Poly", test: i => i.kind === "Poly" },
 ];
+function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
+/* what the Pattern dropdown shows: bead by color only ("Dark Blue"), poly with its mil */
+function pickLabel(i) {
+  if (i.kind === "Bead") return i.name.replace(/\s*Bead\s*\([^)]*\)\s*$/, "");
+  if (i.kind === "Poly") return `${i.name} · ${i.mil} mil`;
+  return i.name;
+}
 const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : "Bead & poly";
 const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = { printer: "", group: "" };
@@ -941,9 +953,10 @@ function openPicker() {
   };
   const fillParts = () => {
     const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
-      .sort((a, b) => a.name.localeCompare(b.name) || a.part.localeCompare(b.part));
-    const mixed = new Set(hits.map(i => i.mil + i.height)).size > 1;     // AG groups mix walls and floors
-    opts(T, hits.map(i => ({ value: i.part, label: i.name + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (i.last ? ` (last ${fmt(i.last)})` : "") })));
+      .sort((a, b) => pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part));
+    // AG groups mix walls and floors (bead and poly don't need it)
+    const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
+    opts(T, hits.map(i => ({ value: i.part, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (i.last ? ` (last ${fmt(i.last)})` : "") })));
     showInfo();
   };
   const showInfo = () => { const it = items.get(T.value); $("pkInfo").innerHTML = it ? `${milBadge(it)} ${esc(it.part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}` : ""; };
