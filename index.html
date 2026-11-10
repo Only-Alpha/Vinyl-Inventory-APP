@@ -337,7 +337,7 @@ function renderSetup() {
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves <b>Count ${esc(usDay())}.xlsx</b> (Excel) to Google Drive &gt; Inventory Files. Then click <b>Finish Count</b> on the PC to put this week into the Vinyl List.</p>
+      <p>Saves <b>Week of ${esc(usDay())}.xlsx</b> (Excel) to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b>. Then click <b>Finish Count</b> on the PC to put this week into the Vinyl List.</p>
       <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
@@ -627,7 +627,7 @@ const usDay = (d = new Date()) => `${d.getMonth() + 1}-${d.getDate()}-${String(d
 const timeOf = iso => new Date(iso).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /* Saves { json, xlsx } to Google Drive (or hands them to the phone when there's no link / no signal) */
-async function saveFiles(xlsxName, jsonName, obj, sheets) {
+async function saveFiles(xlsxName, jsonName, obj, sheets, folder) {
   const files = [{ name: jsonName, type: "application/json", text: JSON.stringify(obj, null, 1) }];
   try {
     await loadXlsx();
@@ -637,7 +637,7 @@ async function saveFiles(xlsxName, jsonName, obj, sheets) {
       ws["!cols"] = s.widths.map(w => ({ wch: w }));
       XLSX.utils.book_append_sheet(wb, ws, s.name);
     }
-    files.unshift({ name: xlsxName, type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    files.unshift({ name: xlsxName, folder, type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     base64: XLSX.write(wb, { type: "base64", bookType: "xlsx" }) });
   } catch { toast("Couldn't build the Excel file (no internet?). Saving the count file only."); }
   if (driveUrl) {
@@ -645,7 +645,13 @@ async function saveFiles(xlsxName, jsonName, obj, sheets) {
     try {
       const r = await drivePost(files);
       busy(null);
-      if (r.ok) { toast("Saved to Google Drive > Inventory Files: " + r.saved[0]); return true; }
+      if (r.ok) {
+        const where = r.saved[0] || xlsxName;
+        // an older copy of the Google script ignores folders and saves everything in Inventory Files
+        if (folder && !where.includes("/")) toast(`Saved ${where} in Inventory Files. Update the Google script to use the "${folder}" folder (see Setup).`);
+        else toast("Saved to Google Drive > Inventory Files > " + where.replace("/", " > "));
+        return true;
+      }
       toast("Google Drive said: " + r.error);
     } catch (err) {
       busy(null);
@@ -682,9 +688,11 @@ async function exportCount() {
   }
   const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Vendor serial"]];
   for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.serial || ""]);
-  await saveFiles(`Count ${usDay()}.xlsx`, `count-${isoDay()}.json`, out, [
+  // one Excel file per week in Inventory Files > Weekly Inventory Counts ("Week of 11-12-26.xlsx");
+  // the .json the PC's Finish Count reads stays in Inventory Files
+  await saveFiles(`Week of ${usDay()}.xlsx`, `count-${isoDay()}.json`, out, [
     { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] },
-    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] }]);
+    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] }], "Weekly Inventory Counts");
 }
 
 /* ================= RECEIVING =================
