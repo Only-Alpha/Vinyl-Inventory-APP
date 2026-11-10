@@ -229,7 +229,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.9";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.10";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -350,7 +350,7 @@ function renderSetup() {
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Inventory.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
+      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Vinyl Count App Export.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
       <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
@@ -789,10 +789,10 @@ async function exportCount() {
   }
   const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Rolls", "Vendor serial"]];
   for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.rolls ? e.rolls.join(" + ") : "", e.serial || ""]);
-  // Inventory Files > Weekly Inventory Counts > "11-10-2026 Weekly Inventory.xlsx" (a 2nd count that day: "#2"): every skid, plus the
+  // Inventory Files > Weekly Inventory Counts > "11-10-2026 Weekly Vinyl Count App Export.xlsx" (a 2nd count that day: "#2"): every skid, plus the
   // totals. The formatted "11-10-2026 Weekly Count.xlsx" (the count tabs with CURRENT / LAST WEEK) is made by the PC
   // on the PC. The .json Finish Count reads stays in Inventory Files.
-  await saveFiles(`${fullDay()} Weekly Inventory.xlsx`, `count-${isoDay()}.json`, out, [
+  await saveFiles(`${fullDay()} Weekly Vinyl Count App Export.xlsx`, `count-${isoDay()}.json`, out, [
     { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 22, 14] },
     { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] }], "Weekly Inventory Counts");
 }
