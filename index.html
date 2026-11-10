@@ -337,7 +337,7 @@ function renderSetup() {
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves <b>Week of ${esc(usDay())}.xlsx</b> (Excel) to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b>. Then click <b>Finish Count</b> on the PC to put this week into the Vinyl List.</p>
+      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>Week of ${esc(usDay())} - skid list.xlsx</b>). Then click <b>Finish Count</b> on the PC: it puts this week into the Vinyl List and saves <b>Week of ${esc(usDay())}.xlsx</b> in the same format as your 2027 PB tab.</p>
       <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
@@ -688,11 +688,12 @@ async function exportCount() {
   }
   const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Vendor serial"]];
   for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.serial || ""]);
-  // one Excel file per week in Inventory Files > Weekly Inventory Counts ("Week of 11-12-26.xlsx");
-  // the .json the PC's Finish Count reads stays in Inventory Files
-  await saveFiles(`Week of ${usDay()}.xlsx`, `count-${isoDay()}.json`, out, [
-    { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] },
-    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] }], "Weekly Inventory Counts");
+  // Inventory Files > Weekly Inventory Counts > "Week of 11-12-26 - skid list.xlsx": every skid scanned, plus the
+  // totals. The formatted "Week of 11-12-26.xlsx" (the 2027 PB tab with CURRENT / LAST WEEK) is made by Finish Count
+  // on the PC. The .json Finish Count reads stays in Inventory Files.
+  await saveFiles(`Week of ${usDay()} - skid list.xlsx`, `count-${isoDay()}.json`, out, [
+    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] },
+    { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] }], "Weekly Inventory Counts");
 }
 
 /* ================= RECEIVING =================
