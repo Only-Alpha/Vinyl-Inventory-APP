@@ -229,7 +229,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.5";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.6";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -381,7 +381,8 @@ function openSheet(part) {
     <div class="meta">${esc(part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}</div>
     <div class="compare">
       <div><small>Last week</small><b>${fmt(it.last)}</b> ${unit}</div>
-      <div><small>This week so far</small><b>${fmt(t?.qty ?? 0)}</b> ${unit} <small style="display:inline;text-transform:none">${t ? t.skids + (t.skids === 1 ? " skid" : " skids") : ""}</small></div>
+      <div id="weekBox" data-saved="${t?.qty ?? 0}" data-skids="${t?.skids ?? 0}"><small>This week so far</small><b id="weekNow">${fmt(t?.qty ?? 0)}</b> ${unit}
+        <small id="weekNote" style="display:block;text-transform:none;letter-spacing:0">${t ? t.skids + (t.skids === 1 ? " skid saved" : " skids saved") : "nothing saved yet"}</small></div>
     </div>
     <label for="qty" style="font-weight:600">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
     <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
@@ -485,6 +486,16 @@ function renderSkidList(it) {
     + `<div class="total">${n} skid${n === 1 ? "" : "s"} · ${fmt(sum)} ${unit}${cur.total > 0 ? ` (with skid ${n} in the box)` : ""}</div>`;
   const save = $("shSave");
   if (save) save.innerHTML = n > 1 ? `Save ${n} skids &amp; scan next` : "Save &amp; scan next";
+
+  // the "This week so far" box at the top stays visible above the keyboard: saved + what's on this screen
+  const wk = $("weekBox");
+  if (wk) {
+    const saved = +wk.dataset.saved, savedSkids = +wk.dataset.skids;
+    $("weekNow").textContent = fmt(saved + sum);
+    $("weekNote").textContent = n
+      ? `${n} skid${n === 1 ? "" : "s"} here · ${fmt(sum)}` + (savedSkids ? ` + ${savedSkids} saved` : "")
+      : (savedSkids ? `${savedSkids} skid${savedSkids === 1 ? "" : "s"} saved` : "nothing saved yet");
+  }
 }
 function saveSkid(scanNext) {
   const cur = parseQty($("qty").value);
