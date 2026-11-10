@@ -128,7 +128,13 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .qty { display: flex; align-items: center; gap: 10px; }
 .qty input { flex: 1; min-width: 0; font: 700 44px/1 var(--num); text-align: right; padding: 10px 14px; border: 3px solid var(--brand); border-radius: 12px; background: var(--bg); font-variant-numeric: tabular-nums; }
 .qty .unit { font: 700 26px var(--num); color: var(--muted); width: 44px; }
-.qty .plus { flex: none; min-width: 84px; height: 66px; border: 2px solid var(--brand); border-radius: 12px; background: var(--surface); color: var(--brand); font: 700 22px var(--num); }
+.qtybtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.plus { min-height: 56px; border: 2px solid var(--brand); border-radius: 12px; background: var(--surface); color: var(--brand); font: 700 22px var(--num); }
+.skidlist { margin-top: 10px; display: grid; gap: 6px; }
+.skidlist .sk { display: flex; align-items: center; gap: 10px; background: var(--bg); border-radius: 10px; padding: 8px 10px; font-variant-numeric: tabular-nums; }
+.skidlist .sk span { flex: 1; min-width: 0; }
+.skidlist .sk button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; width: 40px; height: 36px; font-size: 18px; }
+.skidlist .total { font-weight: 700; padding: 2px 4px; }
 .qtysum { margin-top: 8px; font-size: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .qtysum b { color: var(--ink); font-size: 19px; }
 .warnline { margin: 10px 0 0; font-weight: 600; color: var(--warn); }
@@ -223,7 +229,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.4";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.5";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -362,8 +368,9 @@ function renderSetup() {
 
 /* ---------- entering a skid ---------- */
 let sheetPart = null, sheetSerial = null;
+let sheetSkids = [];      // skids set aside with "+ skid" on this screen: [{ qty, rolls, serial }]
 function openSheet(part) {
-  sheetPart = part; sheetSerial = null;
+  sheetPart = part; sheetSerial = null; sheetSkids = [];
   const it = info(part), t = totals().get(part);
   const unit = it.unit || unitFor(part);
   const scrim = document.createElement("div");
@@ -377,9 +384,12 @@ function openSheet(part) {
       <div><small>This week so far</small><b>${fmt(t?.qty ?? 0)}</b> ${unit} <small style="display:inline;text-transform:none">${t ? t.skids + (t.skids === 1 ? " skid" : " skids") : ""}</small></div>
     </div>
     <label for="qty" style="font-weight:600">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
-    <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span>
-      <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll">+ roll</button></div>
+    <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
+    <div class="qtybtns">
+      <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll to this skid">+ roll</button>
+      <button class="plus" type="button" id="skidPlus" aria-label="Set this skid aside and enter the next one">+ skid</button></div>
     <div class="qtysum" id="qtySum">Partial skid? Type each roll and tap <b>+ roll</b> between them: 200 + 200 + 150</div>
+    <div class="skidlist" id="skidList" hidden></div>
     <div class="serial" id="shSerial">Full skid? Tap <b>Scan vendor qty</b> and scan the Q barcode on the manufacturer's label.</div>
     <p class="warnline" id="shWarn" hidden></p>
     <div class="btn-row">
@@ -392,6 +402,22 @@ function openSheet(part) {
   setTimeout(() => q.focus(), 50);
   q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(true); });
   q.addEventListener("input", () => checkQty(it));
+  // "+ skid": set this skid aside (with its serial, if one was scanned) and clear the box for the next skid
+  $("skidPlus").addEventListener("pointerdown", e => e.preventDefault());
+  $("skidPlus").onclick = () => {
+    const { total, rolls } = parseQty(q.value);
+    const w = $("shWarn");
+    if (!(total > 0)) { w.hidden = false; w.textContent = "Enter this skid's amount first, then tap + skid."; q.focus(); return; }
+    if (sheetSerial && (sheetSkids.some(s => s.serial === sheetSerial) || count.entries.some(e => e.serial === sheetSerial))) {
+      w.hidden = false; w.textContent = "This vendor serial is already counted."; return;
+    }
+    sheetSkids.push({ qty: total, rolls: rolls.length > 1 ? rolls : undefined, serial: sheetSerial });
+    sheetSerial = null;
+    q.value = ""; q.style.fontSize = ""; w.hidden = true;
+    $("shSerial").innerHTML = `Next skid: type its amount, or tap <b>Scan vendor qty</b>.`;
+    renderSkidList(it); checkQty(it);
+    q.focus();
+  };
   // "+ roll" adds a plus sign without closing the number keyboard
   $("qtyPlus").addEventListener("pointerdown", e => e.preventDefault());
   $("qtyPlus").onclick = () => {
@@ -403,7 +429,12 @@ function openSheet(part) {
   $("shCancel").onclick = closeSheet;
   $("shSave").onclick = () => saveSkid(true);
   $("shVendor").onclick = () => startScan("vendor");
-  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  scrim.addEventListener("click", e => {
+    const un = e.target.closest("[data-unskid]");
+    if (un) { sheetSkids.splice(+un.dataset.unskid, 1); renderSkidList(it); q.focus(); return; }
+    // tapping outside closes, but not when skids are set aside (they'd be lost)
+    if (e.target === scrim && !sheetSkids.length) closeSheet();
+  });
   if (it.unknown) { $("shWarn").hidden = false; $("shWarn").textContent = "This part# isn't on the list from the PC. It will still be saved and flagged."; }
   if (mfrPending) {      // opened from a photo of the manufacturer's label
     const m = mfrPending; mfrPending = null;
@@ -434,24 +465,45 @@ function checkQty(it) {
     else if (isNaN(v) && $("qty").value.trim()) sum.innerHTML = `Only numbers and + please.`;
     else sum.innerHTML = `Partial skid? Type each roll and tap <b>+ roll</b> between them: 200 + 200 + 150`;
   }
+  renderSkidList(it);
   const w = $("shWarn");
   if (it.unknown) return;
   // one skid holding more than ~2 full skids is probably a typo
   if (v > 3000) { w.hidden = false; w.textContent = fmt(v) + " on one skid is a lot. Check the number."; }
   else w.hidden = true;
 }
+/* the skids set aside with "+ skid", each removable, plus the running total (including what's in the box) */
+function renderSkidList(it) {
+  const box = $("skidList"), unit = it.unit || unitFor(sheetPart || "");
+  if (!box) return;
+  const cur = parseQty($("qty").value);
+  const n = sheetSkids.length + (cur.total > 0 ? 1 : 0);
+  const sum = sheetSkids.reduce((a, s) => a + s.qty, 0) + (cur.total > 0 ? cur.total : 0);
+  box.hidden = sheetSkids.length === 0;
+  box.innerHTML = sheetSkids.map((s, i) => `<div class="sk"><span><b>Skid ${i + 1}:</b> ${s.rolls ? s.rolls.map(fmt).join(" + ") + " = " : ""}<b>${fmt(s.qty)}</b> ${unit}${s.serial ? " · serial " + esc(s.serial) : ""}</span>
+      <button type="button" data-unskid="${i}" aria-label="Remove skid ${i + 1}">×</button></div>`).join("")
+    + `<div class="total">${n} skid${n === 1 ? "" : "s"} · ${fmt(sum)} ${unit}${cur.total > 0 ? ` (with skid ${n} in the box)` : ""}</div>`;
+  const save = $("shSave");
+  if (save) save.innerHTML = n > 1 ? `Save ${n} skids &amp; scan next` : "Save &amp; scan next";
+}
 function saveSkid(scanNext) {
-  const { total: v, rolls } = parseQty($("qty").value);
-  if (!(v > 0)) { $("shWarn").hidden = false; $("shWarn").textContent = "Enter the amount on this skid first."; $("qty").focus(); return; }
-  if (sheetSerial && count.entries.some(e => e.serial === sheetSerial)) {
-    $("shWarn").hidden = false; $("shWarn").textContent = "This vendor serial is already counted. Remove the other entry on the Skids tab if it's a mistake."; return;
+  const cur = parseQty($("qty").value);
+  const w = $("shWarn");
+  const skids = [...sheetSkids];
+  if (cur.total > 0) skids.push({ qty: cur.total, rolls: cur.rolls.length > 1 ? cur.rolls : undefined, serial: sheetSerial });
+  else if ($("qty").value.trim()) { w.hidden = false; w.textContent = "Only numbers and + in the amount, please."; $("qty").focus(); return; }
+  if (!skids.length) { w.hidden = false; w.textContent = "Enter the amount on this skid first."; $("qty").focus(); return; }
+  if (sheetSerial && cur.total > 0 && count.entries.some(e => e.serial === sheetSerial)) {
+    w.hidden = false; w.textContent = "This vendor serial is already counted. Remove the other entry on the Skids tab if it's a mistake."; return;
   }
-  const part = sheetPart;
-  count.entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), part, qty: v, unit: info(part).unit || unitFor(part),
-                       rolls: rolls.length > 1 ? rolls : undefined,     // the breakdown, to check the math later
-                       serial: sheetSerial, how: "scan", t: new Date().toISOString() });
+  const part = sheetPart, unit = info(part).unit || unitFor(part), now = new Date().toISOString();
+  for (const s of skids)       // each skid is its own entry, so skid counts stay right
+    count.entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), part, qty: s.qty, unit,
+                         rolls: s.rolls,     // the roll breakdown, to check the math later
+                         serial: s.serial || null, how: "scan", t: now });
   save(); closeSheet(); render();
-  toast(`Saved ${fmt(v)} ${unitFor(part)} · ${info(part).name}`);
+  const sum = skids.reduce((a, s) => a + s.qty, 0);
+  toast(skids.length > 1 ? `Saved ${skids.length} skids · ${fmt(sum)} ${unit} · ${info(part).name}` : `Saved ${fmt(sum)} ${unit} · ${info(part).name}`);
   if (scanNext && camSupported()) setTimeout(() => startScan("label"), 400);
 }
 
