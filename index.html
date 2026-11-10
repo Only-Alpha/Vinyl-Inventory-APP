@@ -229,7 +229,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.8";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.9";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -311,7 +311,10 @@ function renderTotals(t) {
   const p = $("panel-totals");
   p.innerHTML = "";
   // counted part#s, then ones that had stock last week but aren't counted yet
-  const counted = [...t.entries()].map(([part, r]) => ({ it: info(part), now: r.qty, skids: r.skids }));
+  // most recently added first: each part# sorts by its newest skid
+  const latest = new Map();
+  for (const e of count.entries) if (!latest.has(e.part) || e.t > latest.get(e.part)) latest.set(e.part, e.t);
+  const counted = [...t.entries()].map(([part, r]) => ({ it: info(part), now: r.qty, skids: r.skids, at: latest.get(part) || "" }));
   const missing = (list?.items || []).filter(i => i.last > 0 && !t.has(i.part)).map(i => ({ it: i, now: null, skids: 0 }));
   if (!counted.length && !missing.length) { if (list) p.innerHTML = `<p class="empty">Nothing counted yet. Tap <b>Scan ALPHA label</b> or <b>Scan manufacturer's label</b> to start.</p>`; return; }
   const row = r => {
@@ -323,7 +326,7 @@ function renderTotals(t) {
       <div class="nums">${r.now == null ? "–" : fmt(r.now)} <small>${r.it.unit || unitFor(r.it.part)} · last ${fmt(r.it.last)}</small></div>
     </div>`;
   };
-  p.innerHTML += (counted.length ? `<div class="section-title">Counted this week</div>` + counted.sort((a, b) => a.it.name.localeCompare(b.it.name)).map(row).join("") : "")
+  p.innerHTML += (counted.length ? `<div class="section-title">Counted this week, newest first</div>` + counted.sort((a, b) => b.at.localeCompare(a.at)).map(row).join("") : "")
     + (missing.length ? `<div class="section-title">Had stock last week, not counted yet (${missing.length})</div>` + missing.map(row).join("") : "");
 }
 
