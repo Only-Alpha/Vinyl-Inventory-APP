@@ -128,6 +128,9 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .qty { display: flex; align-items: center; gap: 10px; }
 .qty input { flex: 1; min-width: 0; font: 700 44px/1 var(--num); text-align: right; padding: 10px 14px; border: 3px solid var(--brand); border-radius: 12px; background: var(--bg); font-variant-numeric: tabular-nums; }
 .qty .unit { font: 700 26px var(--num); color: var(--muted); width: 44px; }
+.qty .plus { flex: none; min-width: 84px; height: 66px; border: 2px solid var(--brand); border-radius: 12px; background: var(--surface); color: var(--brand); font: 700 22px var(--num); }
+.qtysum { margin-top: 8px; font-size: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.qtysum b { color: var(--ink); font-size: 19px; }
 .warnline { margin: 10px 0 0; font-weight: 600; color: var(--warn); }
 .sheet .btn-row { grid-template-columns: 1fr 1fr; }
 .sheet .btn-row .big { min-height: 60px; }
@@ -325,7 +328,7 @@ function renderSkids() {
     const time = new Date(e.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     return `<div class="row">
       <div><div class="name">${milBadge(it)} ${esc(it.name)}</div>
-        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}</div></div>
+        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}${e.rolls ? " · rolls " + e.rolls.map(fmt).join(" + ") : ""}</div></div>
       <div class="nums">${fmt(e.qty)} <small>${e.unit}</small>
         <button class="del" type="button" data-del="${e.id}">Remove</button></div>
     </div>`;
@@ -372,7 +375,9 @@ function openSheet(part) {
       <div><small>This week so far</small><b>${fmt(t?.qty ?? 0)}</b> ${unit} <small style="display:inline;text-transform:none">${t ? t.skids + (t.skids === 1 ? " skid" : " skids") : ""}</small></div>
     </div>
     <label for="qty" style="font-weight:600">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
-    <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
+    <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span>
+      <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll">+ roll</button></div>
+    <div class="qtysum" id="qtySum">Partial skid? Type each roll and tap <b>+ roll</b> between them: 200 + 200 + 150</div>
     <div class="serial" id="shSerial">Full skid? Tap <b>Scan vendor qty</b> and scan the Q barcode on the manufacturer's label.</div>
     <p class="warnline" id="shWarn" hidden></p>
     <div class="btn-row">
@@ -385,6 +390,14 @@ function openSheet(part) {
   setTimeout(() => q.focus(), 50);
   q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(true); });
   q.addEventListener("input", () => checkQty(it));
+  // "+ roll" adds a plus sign without closing the number keyboard
+  $("qtyPlus").addEventListener("pointerdown", e => e.preventDefault());
+  $("qtyPlus").onclick = () => {
+    const v = q.value.replace(/[\s+]+$/, "");
+    if (v) q.value = v + " + ";
+    q.focus(); q.setSelectionRange(q.value.length, q.value.length);
+    checkQty(it);
+  };
   $("shCancel").onclick = closeSheet;
   $("shSave").onclick = () => saveSkid(true);
   $("shVendor").onclick = () => startScan("vendor");
@@ -399,8 +412,26 @@ function openSheet(part) {
   }
 }
 function closeSheet() { $("scrim")?.remove(); sheetPart = null; }
+/* "200 + 200 + 150" -> { total: 550, rolls: [200, 200, 150] }   (commas are thousands: "1,130") */
+function parseQty(text) {
+  const bits = String(text || "").replace(/,/g, "").split("+").map(s => s.trim()).filter(s => s !== "");
+  const rolls = bits.map(Number);
+  if (!rolls.length || rolls.some(n => !isFinite(n) || n < 0)) return { total: NaN, rolls: [] };
+  return { total: Math.round(rolls.reduce((a, b) => a + b, 0) * 100) / 100, rolls };
+}
 function checkQty(it) {
-  const v = parseFloat($("qty").value);
+  const { total: v, rolls } = parseQty($("qty").value);
+  const unit = it.unit || unitFor(sheetPart || "");
+  // smaller text once rolls are being added, so the whole "200 + 200 + 150" stays visible
+  const len = $("qty").value.length;
+  $("qty").style.fontSize = len > 16 ? "20px" : len > 10 ? "26px" : len > 6 ? "34px" : "";
+  const sum = $("qtySum");
+  if (sum) {
+    if (rolls.length > 1) sum.innerHTML = `${rolls.map(fmt).join(" + ")} = <b>${fmt(v)} ${unit}</b> (${rolls.length} rolls)`;
+    else if (/\+/.test($("qty").value)) sum.innerHTML = `Type the next roll…`;
+    else if (isNaN(v) && $("qty").value.trim()) sum.innerHTML = `Only numbers and + please.`;
+    else sum.innerHTML = `Partial skid? Type each roll and tap <b>+ roll</b> between them: 200 + 200 + 150`;
+  }
   const w = $("shWarn");
   if (it.unknown) return;
   // one skid holding more than ~2 full skids is probably a typo
@@ -408,13 +439,14 @@ function checkQty(it) {
   else w.hidden = true;
 }
 function saveSkid(scanNext) {
-  const v = parseFloat(($("qty").value || "").replace(/,/g, ""));
+  const { total: v, rolls } = parseQty($("qty").value);
   if (!(v > 0)) { $("shWarn").hidden = false; $("shWarn").textContent = "Enter the amount on this skid first."; $("qty").focus(); return; }
   if (sheetSerial && count.entries.some(e => e.serial === sheetSerial)) {
     $("shWarn").hidden = false; $("shWarn").textContent = "This vendor serial is already counted. Remove the other entry on the Skids tab if it's a mistake."; return;
   }
   const part = sheetPart;
   count.entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), part, qty: v, unit: info(part).unit || unitFor(part),
+                       rolls: rolls.length > 1 ? rolls : undefined,     // the breakdown, to check the math later
                        serial: sheetSerial, how: "scan", t: new Date().toISOString() });
   save(); closeSheet(); render();
   toast(`Saved ${fmt(v)} ${unitFor(part)} · ${info(part).name}`);
@@ -687,13 +719,13 @@ async function exportCount() {
                      now, it.last ?? null, now != null && it.last != null ? now - it.last : null, it.unit || unitFor(it.part),
                      r ? r.skids : 0, f ? f.text : ""]);
   }
-  const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Vendor serial"]];
-  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.serial || ""]);
+  const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Rolls", "Vendor serial"]];
+  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.rolls ? e.rolls.join(" + ") : "", e.serial || ""]);
   // Inventory Files > Weekly Inventory Counts > "11-10-2026 Weekly Inventory.xlsx" (a 2nd count that day: "#2"): every skid, plus the
   // totals. The formatted "11-10-2026 Weekly Count.xlsx" (the count tabs with CURRENT / LAST WEEK) is made by the PC
   // on the PC. The .json Finish Count reads stays in Inventory Files.
   await saveFiles(`${fullDay()} Weekly Inventory.xlsx`, `count-${isoDay()}.json`, out, [
-    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] },
+    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 22, 14] },
     { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] }], "Weekly Inventory Counts");
 }
 
