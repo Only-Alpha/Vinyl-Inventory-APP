@@ -197,7 +197,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><rect x="7" y="8" width="10" height="8" rx="1"/></svg>
       Scan manufacturer's label
     </button>
-    <button class="big secondary" id="btnRecType" type="button" style="grid-column:1/-1">Type 2P# or part#</button>
+    <button class="big secondary" id="btnRecType" type="button" style="grid-column:1/-1">Manual Entry</button>
   </div>
   <section class="panel" id="panel-receive"></section>
 </main>
@@ -239,7 +239,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.15";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.16";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -1039,11 +1039,16 @@ const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : "Bead
 const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = { printer: "", group: "" };
 
-function openPicker() {
+/* onPick (Receiving): the picker opens on top of whatever is showing and hands back the part# instead of
+   opening the count sheet */
+function openPicker(onPick) {
   const all = list?.items || [];
   if (!all.length) { toast("Pick count-list.json from Google Drive > Inventory Files"); $("fileList").click(); return; }
   const scrim = document.createElement("div");
-  scrim.className = "scrim"; scrim.id = "scrim";
+  scrim.className = "scrim"; scrim.id = onPick ? "scrim2" : "scrim";
+  if (onPick) scrim.style.zIndex = 21;
+  const close = () => onPick ? scrim.remove() : closeSheet();
+  const choose = part => { close(); onPick ? onPick(part) : openSheet(part); };
   const sel = 'style="width:100%;font:600 19px var(--font);padding:12px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"';
   scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
     <h2 id="pkTitle">Manual Entry</h2>
@@ -1057,7 +1062,7 @@ function openPicker() {
     </div>
     <div class="btn-row" style="grid-template-columns:1fr 2fr">
       <button class="big secondary" type="button" id="pkCancel">Cancel</button>
-      <button class="big primary" type="button" id="pkGo" style="grid-column:auto">Enter amount</button>
+      <button class="big primary" type="button" id="pkGo" style="grid-column:auto">${onPick ? "Use this" : "Enter amount"}</button>
     </div></div>`;
   document.body.appendChild(scrim);
   const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
@@ -1083,8 +1088,8 @@ function openPicker() {
   const showInfo = () => { const it = items.get(T.value); $("pkInfo").innerHTML = it ? `${milBadge(it)} ${esc(it.part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}` : ""; };
   P.onchange = () => fillGroups(); G.onchange = fillParts; T.onchange = showInfo;
   fillGroups(pickMemory.group);
-  $("pkCancel").onclick = () => { mfrPending = null; closeSheet(); };
-  $("pkGo").onclick = () => { if (!T.value) return; pickMemory = { printer: P.value, group: G.value }; const part = T.value; closeSheet(); openSheet(part); };
+  $("pkCancel").onclick = () => { if (!onPick) mfrPending = null; close(); };
+  $("pkGo").onclick = () => { if (!T.value) return; pickMemory = { printer: P.value, group: G.value }; choose(T.value); };
 
   // typing in the search box swaps the dropdowns for matches (part#, 2P# or pattern); empty box = dropdowns again
   const F = $("pkFind"), R = $("pkResults");
@@ -1093,8 +1098,9 @@ function openPicker() {
     R.hidden = !s; $("pkDrop").hidden = !!s; $("pkGo").hidden = !!s;
     if (!s) return;
     let html = "";
-    if (PART_RX.test(typed) && !items.has(typed)) html += `<button class="pick" type="button" data-part="${esc(typed)}"><span class="name">Use ${esc(typed)}</span><span class="sub">not on the list</span></button>`;
     const hits = all.filter(i => (i.name + " " + i.part + " " + (i.vendor || "")).toLowerCase().includes(s)).slice(0, 40);
+    if ((PART_RX.test(typed) && !items.has(typed)) || (onPick && VENDOR_RX.test(typed) && !hits.length))
+      html += `<button class="pick" type="button" data-part="${esc(typed)}"><span class="name">Use ${esc(typed)}</span><span class="sub">not on the list</span></button>`;
     html += hits.map(i => `<button class="pick" type="button" data-part="${esc(i.part)}">
         <span class="name">${milBadge(i)} ${esc(i.name)} ${lineChip(i)}</span><span class="sub">last ${fmt(i.last)}</span>
         <span class="sub">${esc(i.part)} · ${esc(desc(i))}${i.vendor ? " · " + esc(i.vendor) : ""}</span><span></span></button>`).join("");
@@ -1102,8 +1108,8 @@ function openPicker() {
   };
   F.addEventListener("input", search);
   F.addEventListener("keydown", e => { if (e.key === "Enter") { const first = R.querySelector("[data-part]"); if (first) first.click(); } });
-  R.addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) { closeSheet(); openSheet(b.dataset.part); } });
-  scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
+  R.addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) choose(b.dataset.part); });
+  scrim.addEventListener("click", e => { if (e.target === scrim) close(); });
 }
 
 /* Inventory > Scan vendor qty: barcodes only, feeding the open skid */
@@ -1240,6 +1246,7 @@ function openReceiveSheet(r) {
     <div class="reading" id="recReading" ${r.reading ? "" : "hidden"}>Reading the 2P# off the label…</div>
     <label for="recVendor" style="font-weight:600">2P# (or part#)</label>
     <input class="vin" id="recVendor" autocomplete="off" autocapitalize="characters" placeholder="2P____" value="${esc(r.vendor || "")}">
+    <button class="big secondary" type="button" id="recPick" style="width:100%;margin-top:8px;padding:10px 14px;font-size:17px">Manual Entry (pick the pattern)</button>
     <div id="recMatch" class="meta"></div>
     <dl class="found">
       <dt>Qty</dt><dd><input id="recQty" inputmode="decimal" value="${r.qty ?? ""}" style="font:700 22px var(--num);width:9ch;padding:4px 8px;border:2px solid var(--line);border-radius:8px;background:var(--bg)"> <span id="recUnit">yd</span></dd>
@@ -1260,6 +1267,8 @@ function openReceiveSheet(r) {
   $("recVendor").addEventListener("input", matchVendor);
   $("recCancel").onclick = closeSheet;
   $("recSave").onclick = saveReceived;
+  // choose from the list (Printer > Type > Pattern) without losing the qty and serial already read
+  $("recPick").onclick = () => openPicker(part => { $("recVendor").value = part; $("recWarn").hidden = true; matchVendor(); });
   scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
   matchVendor();
   if (!r.reading) setTimeout(() => $("recVendor").focus(), 50);
@@ -1339,10 +1348,10 @@ for (const n of ["totals", "skids", "setup"]) $("tab-" + n).onclick = () => show
 $("btnScan").onclick = () => startScan("label");
 $("btnMfr").onclick = () => startScan("mfr");
 $("btnRecScan").onclick = startReceiveScan;
-$("btnRecType").onclick = () => openReceiveSheet({});
+$("btnRecType").onclick = () => openPicker(part => openReceiveSheet({ vendor: part }));
 $("modeReceive").onclick = () => setMode("receive");
 $("modeCount").onclick = () => setMode("count");
-$("btnFind").onclick = openPicker;
+$("btnFind").onclick = () => openPicker();
 // (Type part# is now the search box at the top of Manual Entry)
 document.addEventListener("click", e => {
   const del = e.target.closest("[data-del]");
