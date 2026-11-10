@@ -82,6 +82,15 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .big.primary { background: var(--brand); color: var(--brand-ink); grid-column: 1 / -1; min-height: 76px; font-size: 22px; }
 .big.secondary { background: var(--surface); border: 2px solid var(--line); }
 .big svg { width: 28px; height: 28px; }
+.actions.compact .scanbtn { flex-direction: column; gap: 6px; min-height: 96px; font-size: 17px; line-height: 1.15; text-align: center;
+  background: var(--brand); color: var(--brand-ink); }
+.actions.compact .scanbtn.alt { background: var(--surface); color: var(--brand); border: 3px solid var(--brand); }
+.actions.compact .scanbtn svg { width: 30px; height: 30px; }
+/* Finish count bar, pinned to the bottom of the Inventory screen */
+.finishbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.finishbar button { width: 100%; max-width: 688px; display: block; margin: 0 auto; min-height: 56px; border: 0; border-radius: 12px;
+  background: var(--ok); color: #fff; font: 700 19px var(--font); }
 
 /* tabs */
 .tabs { display: flex; gap: 6px; padding-block: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 112px); background: var(--bg); z-index: 4; }
@@ -195,17 +204,17 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 
 <!-- ============ INVENTORY: weekly count ============ -->
 <main class="wrap" id="view-count">
-  <div class="actions">
-    <button class="big primary" id="btnScan" type="button">
+  <!-- two scan buttons side by side, Manual Entry (with its own part# / pattern search) under them -->
+  <div class="actions compact">
+    <button class="big scanbtn" id="btnScan" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
-      Scan ALPHA label
+      <span>Scan ALPHA<br>label</span>
     </button>
-    <button class="big primary" id="btnMfr" type="button" style="background:var(--surface);color:var(--brand);border:3px solid var(--brand)">
+    <button class="big scanbtn alt" id="btnMfr" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
-      Scan manufacturer's label
+      <span>Scan manufacturer's<br>label</span>
     </button>
-    <button class="big secondary" id="btnFind" type="button">Manual Entry</button>
-    <button class="big secondary" id="btnType" type="button">Type part#</button>
+    <button class="big secondary" id="btnFind" type="button" style="grid-column:1/-1">Manual Entry</button>
   </div>
 
   <nav class="tabs" role="tablist">
@@ -217,6 +226,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   <section class="panel" id="panel-totals"></section>
   <section class="panel" id="panel-skids" hidden></section>
   <section class="panel" id="panel-setup" hidden></section>
+  <div class="finishbar" id="finishBar" hidden><button type="button" id="btnFinishBar">Finish count</button></div>
 </main>
 
 <!-- A non-image accept list makes Android open its document picker (with Google Drive in the side menu) instead of
@@ -229,7 +239,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.13";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.14";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -305,6 +315,13 @@ function render() {
   }
   $("noList").hidden = !!list;
   renderTotals(t); renderSkids(); renderSetup(); renderReceive();
+  updateFinishBar();
+}
+/* "Finish count" stays at the bottom of the Inventory screen once something is counted (not on Setup, which has its own) */
+function updateFinishBar() {
+  const n = count.entries.length, onSetup = $("tab-setup").getAttribute("aria-selected") === "true";
+  $("finishBar").hidden = !(mode === "count" && n > 0 && !onSetup);
+  $("btnFinishBar").textContent = `Finish count (${n} skid${n === 1 ? "" : "s"})`;
 }
 
 function renderTotals(t) {
@@ -392,14 +409,13 @@ function openSheet(part) {
     <div class="qtybtns">
       <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll to this skid">+ roll</button>
       <button class="plus" type="button" id="skidPlus" aria-label="Set this skid aside and enter the next one">+ skid</button></div>
-    <div class="qtysum" id="qtySum">Partial skid? Type each roll and tap <b>+ roll</b> between them: 200 + 200 + 150</div>
+    <div class="qtysum" id="qtySum" hidden></div>
     <div class="skidlist" id="skidList" hidden></div>
-    <div class="serial" id="shSerial">Full skid? Tap <b>Scan vendor qty</b> and scan the Q barcode on the manufacturer's label.</div>
+    <div class="serial" id="shSerial" hidden></div>
     <p class="warnline" id="shWarn" hidden></p>
-    <div class="btn-row">
+    <div class="btn-row" style="grid-template-columns:1fr 2fr">
       <button class="big secondary" type="button" id="shCancel">Cancel</button>
-      <button class="big secondary" type="button" id="shVendor">Scan vendor qty</button>
-      <button class="big primary" type="button" id="shSave">Save</button>
+      <button class="big primary" type="button" id="shSave" style="grid-column:auto">Save</button>
     </div></div>`;
   document.body.appendChild(scrim);
   const q = $("qty");
@@ -418,7 +434,7 @@ function openSheet(part) {
     sheetSkids.push({ qty: total, rolls: rolls.length > 1 ? rolls : undefined, serial: sheetSerial });
     sheetSerial = null;
     q.value = ""; q.style.fontSize = ""; w.hidden = true;
-    $("shSerial").innerHTML = `Next skid: type its amount, or tap <b>Scan vendor qty</b>.`;
+    $("shSerial").hidden = true;
     renderSkidList(it); checkQty(it);
     q.focus();
   };
@@ -432,7 +448,6 @@ function openSheet(part) {
   };
   $("shCancel").onclick = closeSheet;
   $("shSave").onclick = () => saveSkid();
-  $("shVendor").onclick = () => startScan("vendor");
   scrim.addEventListener("click", e => {
     const un = e.target.closest("[data-unskid]");
     if (un) { sheetSkids.splice(+un.dataset.unskid, 1); renderSkidList(it); q.focus(); return; }
@@ -444,10 +459,12 @@ function openSheet(part) {
     const m = mfrPending; mfrPending = null;
     sheetSerial = m.serial || null;
     if (m.qty) { q.value = String(m.qty); checkQty(it); }
-    $("shSerial").innerHTML = `From the manufacturer's label: ${m.vendor ? "<b>" + esc(m.vendor) + "</b> · " : ""}qty <b>${m.qty ? fmt(m.qty) : "not read"}</b> · serial <b>${esc(m.serial || "not read")}</b>.`
-      + (m.qty ? " Change the amount if the skid has been opened." : "");
+    shNote(`From the manufacturer's label: ${m.vendor ? "<b>" + esc(m.vendor) + "</b> · " : ""}qty <b>${m.qty ? fmt(m.qty) : "not read"}</b> · serial <b>${esc(m.serial || "not read")}</b>.`
+      + (m.qty ? " Change the amount if the skid has been opened." : ""));
   }
 }
+/* a short note under the amount (from the manufacturer's label / a serial); hidden when there's nothing to say */
+function shNote(html) { const n = $("shSerial"); if (n) { n.innerHTML = html; n.hidden = false; } }
 function closeSheet() { $("scrim")?.remove(); sheetPart = null; }
 /* "200 + 200 + 150" -> { total: 550, rolls: [200, 200, 150] }   (commas are thousands: "1,130") */
 function parseQty(text) {
@@ -467,7 +484,8 @@ function checkQty(it) {
     if (rolls.length > 1) sum.innerHTML = `${rolls.map(fmt).join(" + ")} = <b>${fmt(v)} ${unit}</b> (${rolls.length} rolls)`;
     else if (/\+/.test($("qty").value)) sum.innerHTML = `Type the next roll…`;
     else if (isNaN(v) && $("qty").value.trim()) sum.innerHTML = `Only numbers and + please.`;
-    else sum.innerHTML = `Partial skid? Type each roll and tap <b>+ roll</b> between them: 200 + 200 + 150`;
+    else sum.innerHTML = "";
+    sum.hidden = !sum.innerHTML;
   }
   renderSkidList(it);
   const w = $("shWarn");
@@ -529,7 +547,7 @@ function camSupported() { return !!(navigator.mediaDevices && navigator.mediaDev
 
 async function startScan(mode) {
   camMode = mode;
-  if (!camSupported()) { toast("No camera here. Use Type part# or Find material."); return; }
+  if (!camSupported()) { toast("No camera here. Use Manual Entry."); return; }
   const cam = document.createElement("div");
   cam.className = "cam"; cam.id = "cam";
   const receiving = mode === "receive", photo = receiving || mode === "vendor" || mode === "mfr";
@@ -622,7 +640,7 @@ function handleCode(raw) {
   if (q) {
     if (camMode !== "vendor" || !sheetPart) { camMsg("That's the manufacturer's qty. Scan YOUR skid label first."); return false; }
     stopScan(); $("qty").value = String(+q[1]); checkQty(info(sheetPart));
-    $("shSerial").innerHTML = `Qty <b>${fmt(+q[1])}</b> filled in from the manufacturer's label.`;
+    shNote(`Qty <b>${fmt(+q[1])}</b> filled in from the manufacturer's label.`);
     return true;
   }
   const s = text.match(/^(?:4S|S)\s*([0-9A-Z]{5,})$/);
@@ -630,7 +648,7 @@ function handleCode(raw) {
     if (camMode === "vendor" && sheetPart) {
       sheetSerial = s[1];
       camMsg("Serial " + s[1] + " saved with this skid. Now scan the Q barcode.");
-      $("shSerial").innerHTML = `Vendor serial <b>${esc(s[1])}</b>.`;
+      shNote(`Vendor serial <b>${esc(s[1])}</b>.`);
       return false;
     }
     // A skid logged in Receiving: its serial alone says what it is and how much is on it
@@ -639,7 +657,7 @@ function handleCode(raw) {
       stopScan(); openSheet(known.part);
       sheetSerial = s[1];
       if (known.qty) { $("qty").value = String(known.qty); checkQty(info(known.part)); }
-      $("shSerial").innerHTML = `Serial <b>${esc(s[1])}</b> from Receiving${known.qty ? ` · full skid was <b>${fmt(known.qty)}</b>` : ""}. Change the amount if it's been opened.`;
+      shNote(`Serial <b>${esc(s[1])}</b> from Receiving${known.qty ? ` · full skid was <b>${fmt(known.qty)}</b>` : ""}. Change the amount if it's been opened.`);
       return true;
     }
     camMsg("That's the manufacturer's serial. Scan YOUR skid label first.");
@@ -1029,16 +1047,17 @@ function openPicker() {
   const sel = 'style="width:100%;font:600 19px var(--font);padding:12px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"';
   scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
     <h2 id="pkTitle">Manual Entry</h2>
-    <div style="display:grid;gap:12px;margin-top:12px">
+    <input class="search" id="pkFind" placeholder="Type a part#, 2P# or pattern" autocomplete="off" style="margin-top:12px">
+    <div id="pkResults" hidden></div>
+    <div id="pkDrop" style="display:grid;gap:12px;margin-top:12px">
       <label style="display:grid;gap:4px;font-weight:600">Printer<select id="pkPrinter" ${sel}></select></label>
       <label style="display:grid;gap:4px;font-weight:600">Type<select id="pkGroup" ${sel}></select></label>
       <label style="display:grid;gap:4px;font-weight:600">Pattern<select id="pkPart" ${sel}></select></label>
       <div id="pkInfo" class="meta"></div>
     </div>
-    <div class="btn-row">
-      <button class="big secondary" type="button" id="pkSearch">Search instead</button>
+    <div class="btn-row" style="grid-template-columns:1fr 2fr">
       <button class="big secondary" type="button" id="pkCancel">Cancel</button>
-      <button class="big primary" type="button" id="pkGo">Enter amount</button>
+      <button class="big primary" type="button" id="pkGo" style="grid-column:auto">Enter amount</button>
     </div></div>`;
   document.body.appendChild(scrim);
   const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
@@ -1065,8 +1084,25 @@ function openPicker() {
   P.onchange = () => fillGroups(); G.onchange = fillParts; T.onchange = showInfo;
   fillGroups(pickMemory.group);
   $("pkCancel").onclick = () => { mfrPending = null; closeSheet(); };
-  $("pkSearch").onclick = () => { closeSheet(); openFinder(false); };
   $("pkGo").onclick = () => { if (!T.value) return; pickMemory = { printer: P.value, group: G.value }; const part = T.value; closeSheet(); openSheet(part); };
+
+  // typing in the search box swaps the dropdowns for matches (part#, 2P# or pattern); empty box = dropdowns again
+  const F = $("pkFind"), R = $("pkResults");
+  const search = () => {
+    const s = F.value.trim().toLowerCase(), typed = F.value.trim().toUpperCase();
+    R.hidden = !s; $("pkDrop").hidden = !!s; $("pkGo").hidden = !!s;
+    if (!s) return;
+    let html = "";
+    if (PART_RX.test(typed) && !items.has(typed)) html += `<button class="pick" type="button" data-part="${esc(typed)}"><span class="name">Use ${esc(typed)}</span><span class="sub">not on the list</span></button>`;
+    const hits = all.filter(i => (i.name + " " + i.part + " " + (i.vendor || "")).toLowerCase().includes(s)).slice(0, 40);
+    html += hits.map(i => `<button class="pick" type="button" data-part="${esc(i.part)}">
+        <span class="name">${milBadge(i)} ${esc(i.name)} ${lineChip(i)}</span><span class="sub">last ${fmt(i.last)}</span>
+        <span class="sub">${esc(i.part)} · ${esc(desc(i))}${i.vendor ? " · " + esc(i.vendor) : ""}</span><span></span></button>`).join("");
+    R.innerHTML = html || `<p class="empty">No match.</p>`;
+  };
+  F.addEventListener("input", search);
+  F.addEventListener("keydown", e => { if (e.key === "Enter") { const first = R.querySelector("[data-part]"); if (first) first.click(); } });
+  R.addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) { closeSheet(); openSheet(b.dataset.part); } });
   scrim.addEventListener("click", e => { if (e.target === scrim) closeSheet(); });
 }
 
@@ -1296,7 +1332,9 @@ function setMode(m) {
 /* ---------- wiring ---------- */
 function showTab(name) {
   for (const n of ["totals", "skids", "setup"]) { $("tab-" + n).setAttribute("aria-selected", n === name); $("panel-" + n).hidden = n !== name; }
+  updateFinishBar();
 }
+$("btnFinishBar").onclick = () => exportCount();
 for (const n of ["totals", "skids", "setup"]) $("tab-" + n).onclick = () => showTab(n);
 $("btnScan").onclick = () => startScan("label");
 $("btnMfr").onclick = () => startScan("mfr");
@@ -1305,7 +1343,7 @@ $("btnRecType").onclick = () => openReceiveSheet({});
 $("modeReceive").onclick = () => setMode("receive");
 $("modeCount").onclick = () => setMode("count");
 $("btnFind").onclick = openPicker;
-$("btnType").onclick = () => openFinder(true);
+// (Type part# is now the search box at the top of Manual Entry)
 document.addEventListener("click", e => {
   const del = e.target.closest("[data-del]");
   if (del) {
