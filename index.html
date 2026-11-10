@@ -223,6 +223,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
+const APP_VERSION = "2026-11-10.4";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -353,6 +354,7 @@ function renderSetup() {
       <input class="search" id="driveInput" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(driveUrl)}" autocomplete="off" spellcheck="false" style="font-size:15px">
       <div class="btn-row"><button class="btn" type="button" id="btnDriveSave">Save link &amp; test</button></div>
       <p id="driveStatus"></p></div>
+    <p class="empty" style="padding:8px 0">App version ${APP_VERSION}</p>
     <div class="note"><h3>Start a new count</h3>
       <p>This count started ${esc(started)}. Starting over clears every skid on this phone. Export first.</p>
       <div id="newArea"><button class="btn danger" type="button" id="btnNew">Start a new count</button></div></div>`;
@@ -1297,6 +1299,23 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 wake();
 setMode(mode);
 syncList(true);      // newest material list from Google Drive, if the link is set
+
+/* Phones may keep a downloaded copy of the app for a while: compare with the live copy and offer the update */
+async function checkForUpdate() {
+  try {
+    const live = await (await fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" })).text();
+    const m = live.match(/const APP_VERSION = "([^"]+)"/);
+    if (!m || m[1] === APP_VERSION || $("updateBar")) return;
+    const bar = document.createElement("button");
+    bar.id = "updateBar"; bar.type = "button";
+    bar.textContent = "Update available. Tap to update";
+    bar.style.cssText = "position:fixed;left:16px;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:35;padding:16px;border:0;border-radius:12px;background:var(--brand);color:var(--brand-ink);font:700 18px var(--font)";
+    bar.onclick = () => location.replace(location.pathname + "?v=" + m[1]);
+    document.body.appendChild(bar);
+  } catch {}
+}
+checkForUpdate();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkForUpdate(); });
 </script>
 </body>
 </html>
