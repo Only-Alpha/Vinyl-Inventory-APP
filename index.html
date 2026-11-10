@@ -229,7 +229,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.11";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.12";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -399,12 +399,12 @@ function openSheet(part) {
     <div class="btn-row">
       <button class="big secondary" type="button" id="shCancel">Cancel</button>
       <button class="big secondary" type="button" id="shVendor">Scan vendor qty</button>
-      <button class="big primary" type="button" id="shSave">Save &amp; scan next</button>
+      <button class="big primary" type="button" id="shSave">Save</button>
     </div></div>`;
   document.body.appendChild(scrim);
   const q = $("qty");
   setTimeout(() => q.focus(), 50);
-  q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(true); });
+  q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(); });
   q.addEventListener("input", () => checkQty(it));
   // "+ skid": set this skid aside (with its serial, if one was scanned) and clear the box for the next skid
   $("skidPlus").addEventListener("pointerdown", e => e.preventDefault());
@@ -431,7 +431,7 @@ function openSheet(part) {
     checkQty(it);
   };
   $("shCancel").onclick = closeSheet;
-  $("shSave").onclick = () => saveSkid(true);
+  $("shSave").onclick = () => saveSkid();
   $("shVendor").onclick = () => startScan("vendor");
   scrim.addEventListener("click", e => {
     const un = e.target.closest("[data-unskid]");
@@ -488,7 +488,7 @@ function renderSkidList(it) {
       <button type="button" data-unskid="${i}" aria-label="Remove skid ${i + 1}">×</button></div>`).join("")
     + `<div class="total">${n} skid${n === 1 ? "" : "s"} · ${fmt(sum)} ${unit}${cur.total > 0 ? ` (with skid ${n} in the box)` : ""}</div>`;
   const save = $("shSave");
-  if (save) save.innerHTML = n > 1 ? `Save ${n} skids &amp; scan next` : "Save &amp; scan next";
+  if (save) save.innerHTML = n > 1 ? `Save ${n} skids` : "Save";
 
   // the "This week so far" box at the top stays visible above the keyboard: saved + what's on this screen
   const wk = $("weekBox");
@@ -500,7 +500,7 @@ function renderSkidList(it) {
       : (savedSkids ? `${savedSkids} skid${savedSkids === 1 ? "" : "s"} saved` : "nothing saved yet");
   }
 }
-function saveSkid(scanNext) {
+function saveSkid() {
   const cur = parseQty($("qty").value);
   const w = $("shWarn");
   const skids = [...sheetSkids];
@@ -518,7 +518,8 @@ function saveSkid(scanNext) {
   save(); closeSheet(); render();
   const sum = skids.reduce((a, s) => a + s.qty, 0);
   toast(skids.length > 1 ? `Saved ${skids.length} skids · ${fmt(sum)} ${unit} · ${info(part).name}` : `Saved ${fmt(sum)} ${unit} · ${info(part).name}`);
-  if (scanNext && camSupported()) setTimeout(() => startScan("label"), 400);
+  // back to the Inventory home screen (Totals), with the material just saved at the top
+  showTab("totals"); window.scrollTo(0, 0);
 }
 
 /* ---------- camera / barcodes ---------- */
