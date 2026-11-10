@@ -337,7 +337,7 @@ function renderSetup() {
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Skid List.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
+      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Inventory.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
       <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
@@ -628,8 +628,8 @@ const fullDay = (d = new Date()) => `${pad2(d.getMonth() + 1)}-${pad2(d.getDate(
 const timeOf = iso => new Date(iso).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /* Saves { json, xlsx } to Google Drive (or hands them to the phone when there's no link / no signal) */
-async function saveFiles(xlsxName, jsonName, obj, sheets, folder) {
-  const files = [{ name: jsonName, type: "application/json", text: JSON.stringify(obj, null, 1) }];
+async function saveFiles(xlsxName, jsonName, obj, sheets, folder, jsonFolder) {
+  const files = [{ name: jsonName, folder: jsonFolder, type: "application/json", text: JSON.stringify(obj, null, 1) }];
   try {
     await loadXlsx();
     const wb = XLSX.utils.book_new();
@@ -689,10 +689,10 @@ async function exportCount() {
   }
   const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Vendor serial"]];
   for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.serial || ""]);
-  // Inventory Files > Weekly Inventory Counts > "11-10-2026 Skid List.xlsx" (a 2nd count that day: "#2"): every skid, plus the
+  // Inventory Files > Weekly Inventory Counts > "11-10-2026 Weekly Inventory.xlsx" (a 2nd count that day: "#2"): every skid, plus the
   // totals. The formatted "11-10-2026 Weekly Count.xlsx" (the count tabs with CURRENT / LAST WEEK) is made by the PC
   // on the PC. The .json Finish Count reads stays in Inventory Files.
-  await saveFiles(`${fullDay()} Skid List.xlsx`, `count-${isoDay()}.json`, out, [
+  await saveFiles(`${fullDay()} Weekly Inventory.xlsx`, `count-${isoDay()}.json`, out, [
     { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] },
     { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] }], "Weekly Inventory Counts");
 }
@@ -712,7 +712,7 @@ function renderReceive() {
   const n = received.entries.length;
   let html = "";
   html += `<div class="note"><h3>${n ? `${n} skid${n === 1 ? "" : "s"} received` : "Nothing received yet"}</h3>
-    <p>Scan each manufacturer's label as the skids come off the truck. Then tap <b>Finish</b>: it saves <b>Receiving Then export, and on the PC click <b>Load Receiving</b> in Skid Label Generator to print one skid label per skid.lt;dateThen export, and on the PC click <b>Load Receiving</b> in Skid Label Generator to print one skid label per skid.gt;.xlsx</b> to Google Drive. On the PC, <b>Load Receiving</b> in Skid Label Generator prints one skid label per skid.</p>
+    <p>Scan each manufacturer's label as the skids come off the truck. Then tap <b>Finish</b>: it saves <b>${esc(fullDay())} Received Vinyl.xlsx</b> to Google Drive &gt; Inventory Files &gt; <b>Received Vinyl</b>. On the PC, <b>Load Receiving</b> in Skid Label Generator prints one skid label per skid.</p>
     <div class="btn-row"><button class="btn" type="button" id="btnRecExport" ${n ? "" : "disabled"}>Finish &amp; save to Google Drive (${n})</button>
     <div id="recClearArea"><button class="btn danger" type="button" id="btnRecClear" ${n ? "" : "disabled"}>Clear received list</button></div></div></div>`;
   if (n) {
@@ -1165,8 +1165,9 @@ async function exportReceived() {
     rows.push([timeOf(e.t), e.vendor || "", e.part || "", it ? it.name : "Not matched", it ? printerOf(it) : "",
                it?.mil || "", it?.height || "", e.qty, e.unit || "", e.serial || "", e.art || ""]);
   }
-  await saveFiles(`Receiving ${usDay(d)} ${hm}.xlsx`, `receiving-${isoDay(d)}-${hm}.json`, out,
-    [{ name: "Received", rows, widths: [16, 9, 17, 26, 11, 5, 7, 8, 5, 13, 26] }]);
+  // Inventory Files > Received Vinyl: "11-10-2026 Received Vinyl.xlsx" (#2 for another truck that day) + the .json Load Receiving reads
+  await saveFiles(`${fullDay(d)} Received Vinyl.xlsx`, `receiving-${isoDay(d)}-${hm}.json`, out,
+    [{ name: "Received", rows, widths: [16, 9, 17, 26, 11, 5, 7, 8, 5, 13, 26] }], "Received Vinyl", "Received Vinyl");
 }
 
 let mode = store.get("skidcount.mode", "count");
