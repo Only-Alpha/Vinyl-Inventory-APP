@@ -337,7 +337,7 @@ function renderSetup() {
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>Week of ${esc(usDay())} - skid list.xlsx</b>). Then click <b>Finish Count</b> on the PC: it puts this week into the Vinyl List and saves <b>Week of ${esc(usDay())}.xlsx</b> in the same format as your 2027 PB tab.</p>
+      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Skid List.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
       <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
@@ -624,6 +624,7 @@ function loadXlsx() { return window.XLSX ? Promise.resolve() : loadScript("https
 const pad2 = n => String(n).padStart(2, "0");
 const isoDay = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const usDay = (d = new Date()) => `${d.getMonth() + 1}-${d.getDate()}-${String(d.getFullYear()).slice(2)}`;
+const fullDay = (d = new Date()) => `${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}-${d.getFullYear()}`;   // 11-10-2026
 const timeOf = iso => new Date(iso).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
 
 /* Saves { json, xlsx } to Google Drive (or hands them to the phone when there's no link / no signal) */
@@ -688,10 +689,10 @@ async function exportCount() {
   }
   const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Vendor serial"]];
   for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.serial || ""]);
-  // Inventory Files > Weekly Inventory Counts > "Week of 11-12-26 - skid list.xlsx": every skid scanned, plus the
-  // totals. The formatted "Week of 11-12-26.xlsx" (the 2027 PB tab with CURRENT / LAST WEEK) is made by Finish Count
+  // Inventory Files > Weekly Inventory Counts > "11-10-2026 Skid List.xlsx" (a 2nd count that day: "#2"): every skid, plus the
+  // totals. The formatted "11-10-2026 Weekly Count.xlsx" (the count tabs with CURRENT / LAST WEEK) is made by the PC
   // on the PC. The .json Finish Count reads stays in Inventory Files.
-  await saveFiles(`Week of ${usDay()} - skid list.xlsx`, `count-${isoDay()}.json`, out, [
+  await saveFiles(`${fullDay()} Skid List.xlsx`, `count-${isoDay()}.json`, out, [
     { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] },
     { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] }], "Weekly Inventory Counts");
 }
