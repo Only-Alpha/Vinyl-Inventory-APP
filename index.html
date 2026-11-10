@@ -204,7 +204,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></svg>
       Scan manufacturer's label
     </button>
-    <button class="big secondary" id="btnFind" type="button">Pick material</button>
+    <button class="big secondary" id="btnFind" type="button">Manual Enter</button>
     <button class="big secondary" id="btnType" type="button">Type part#</button>
   </div>
 
@@ -229,7 +229,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.6";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.7";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -987,7 +987,7 @@ function busy(msg) {
   $("busyMsg").textContent = msg;
 }
 
-/* ---- Pick material: Printer (CSI / P4 / Bead & poly) -> type -> pattern ---- */
+/* ---- Manual Enter: Printer (CSI / P4 / Bead & poly) -> type -> pattern ---- */
 const GROUPS = [
   { name: "20 mil wall", test: i => i.mil === "20" && i.height === "39" },
   { name: "20 mil floor", test: i => i.mil === "20" && i.height === "72" },
@@ -1023,7 +1023,7 @@ function openPicker() {
   scrim.className = "scrim"; scrim.id = "scrim";
   const sel = 'style="width:100%;font:600 19px var(--font);padding:12px;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)"';
   scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
-    <h2 id="pkTitle">Pick material</h2>
+    <h2 id="pkTitle">Manual Enter</h2>
     <div style="display:grid;gap:12px;margin-top:12px">
       <label style="display:grid;gap:4px;font-weight:600">Printer<select id="pkPrinter" ${sel}></select></label>
       <label style="display:grid;gap:4px;font-weight:600">Type<select id="pkGroup" ${sel}></select></label>
