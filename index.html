@@ -184,7 +184,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 <div class="wrap" id="noList" hidden>
   <div class="note" style="border:2px solid var(--warn);background:var(--warn-bg);margin-top:12px">
     <h3 style="color:var(--warn)">No material list on this phone yet</h3>
-    <p style="color:var(--ink)">Without it, 2P#s and patterns can't be looked up. On the PC: Skid Label Generator &gt; <b>Start Count</b>.
+    <p style="color:var(--ink)">Without it, 2P#s and patterns can't be looked up. The PC sends it by itself (Skid Label Generator &gt; Options &gt; <b>Finish counts automatically</b>, or <b>Start Count</b> there).
       Then tap below (with the Google Drive link set in Setup it loads by itself), or pick <b>count-list.json</b> from Google Drive &gt; My Drive &gt; <b>Inventory Files</b>.</p>
     <button class="btn" type="button" id="btnLoadTop" style="border-color:var(--warn)">Load list</button>
   </div>
@@ -239,7 +239,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.14";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-10.15";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -370,7 +370,7 @@ function renderSetup() {
       <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Vinyl Count App Export.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Vinyl Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
       <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
     <div class="note"><h3>Material list</h3>
-      <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
+      <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, sent by the PC ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
         ${driveUrl ? "It updates from Google Drive each time the app opens." : ""}</p>
       <div class="btn-row">
         ${driveUrl ? `<button class="btn" type="button" id="btnSync">Get the newest list now</button>` : ""}
