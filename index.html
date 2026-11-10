@@ -167,7 +167,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   <div class="note" style="border:2px solid var(--warn);background:var(--warn-bg);margin-top:12px">
     <h3 style="color:var(--warn)">No material list on this phone yet</h3>
     <p style="color:var(--ink)">Without it, 2P#s and patterns can't be looked up. On the PC: Skid Label Generator &gt; <b>Start Count</b>.
-      Then tap below and pick <b>count-list.json</b> from Google Drive &gt; My Drive &gt; <b>Inventory Files</b>.</p>
+      Then tap below (with the Google Drive link set in Setup it loads by itself), or pick <b>count-list.json</b> from Google Drive &gt; My Drive &gt; <b>Inventory Files</b>.</p>
     <button class="btn" type="button" id="btnLoadTop" style="border-color:var(--warn)">Load list</button>
   </div>
 </div>
@@ -336,12 +336,20 @@ function renderSetup() {
   const p = $("panel-setup");
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
-    <div class="note"><h3>List from the PC</h3>
-      <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made ${esc(new Date(list.made).toLocaleString())}.` : "No list loaded yet."}</p>
-      <button class="btn" type="button" id="btnLoad">Load list (count-list.json)</button></div>
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves this count as a file. Save it to the <b>Inventory Files</b> folder in Google Drive, then click <b>Finish Count</b> on the PC.</p>
-      <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"}>Export count (${count.entries.length} skids)</button></div>
+      <p>Saves <b>Count ${esc(usDay())}.xlsx</b> (Excel) to Google Drive &gt; Inventory Files. Then click <b>Finish Count</b> on the PC to put this week into the Vinyl List.</p>
+      <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
+    <div class="note"><h3>Material list</h3>
+      <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, made by Start Count ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
+        ${driveUrl ? "It updates from Google Drive each time the app opens." : ""}</p>
+      <div class="btn-row">
+        ${driveUrl ? `<button class="btn" type="button" id="btnSync">Get the newest list now</button>` : ""}
+        <button class="btn" type="button" id="btnLoad">Load list from a file instead</button></div></div>
+    <div class="note"><h3>Google Drive link</h3>
+      <p>${driveUrl ? "Connected. The list loads by itself and Finish saves straight to Inventory Files." : "Paste the web app link from the one-time Google setup. Until then, files go through the phone's Share / Downloads."}</p>
+      <input class="search" id="driveInput" placeholder="https://script.google.com/macros/s/…/exec" value="${esc(driveUrl)}" autocomplete="off" spellcheck="false" style="font-size:15px">
+      <div class="btn-row"><button class="btn" type="button" id="btnDriveSave">Save link &amp; test</button></div>
+      <p id="driveStatus"></p></div>
     <div class="note"><h3>Start a new count</h3>
       <p>This count started ${esc(started)}. Starting over clears every skid on this phone. Export first.</p>
       <div id="newArea"><button class="btn danger" type="button" id="btnNew">Start a new count</button></div></div>`;
@@ -581,20 +589,102 @@ $("fileList").addEventListener("change", async e => {
     toast(`Loaded ${list.items.length} materials`);
   } catch (err) { toast("Couldn't load that file: " + err.message); }
 });
+/* ================= GOOGLE DRIVE =================
+   driveUrl = the web app link of the helper script in your Google account (counter/google-script.gs).
+   It reads count-list.json from My Drive > Inventory Files, and saves the finished count / receiving list there
+   (an Excel file to look at + a .json for Skid Label Generator). Without a link, files go through the phone instead. */
+let driveUrl = store.get("skidcount.drive", "");
+async function driveGet(action) {
+  const r = await fetch(driveUrl + (driveUrl.includes("?") ? "&" : "?") + "action=" + action);
+  return r.json();
+}
+async function drivePost(files) {
+  // a plain-text body keeps this a "simple" request, which Google's script servers accept from another site
+  const r = await fetch(driveUrl, { method: "POST", body: JSON.stringify({ files }) });
+  return r.json();
+}
+let syncing = false;
+async function syncList(quiet) {
+  if (!driveUrl || syncing) return;
+  syncing = true;
+  try {
+    const r = await driveGet("list");
+    if (!r.ok) { if (!quiet) toast(r.error || "Google Drive didn't send the list"); return; }
+    if (!list || list.made !== r.list.made) {
+      list = r.list; items = byPart(); store.set("skidcount.list", list); render();
+      toast(`Material list updated: ${list.items.length} materials`);
+    } else if (!quiet) toast("Material list is up to date");
+  } catch (err) {
+    if (!quiet) toast("Couldn't reach Google Drive: " + err.message);
+  } finally { syncing = false; }
+}
+
+/* Excel files are built on the phone (SheetJS) */
+function loadXlsx() { return window.XLSX ? Promise.resolve() : loadScript("https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"); }
+const pad2 = n => String(n).padStart(2, "0");
+const isoDay = (d = new Date()) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const usDay = (d = new Date()) => `${d.getMonth() + 1}-${d.getDate()}-${String(d.getFullYear()).slice(2)}`;
+const timeOf = iso => new Date(iso).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/* Saves { json, xlsx } to Google Drive (or hands them to the phone when there's no link / no signal) */
+async function saveFiles(xlsxName, jsonName, obj, sheets) {
+  const files = [{ name: jsonName, type: "application/json", text: JSON.stringify(obj, null, 1) }];
+  try {
+    await loadXlsx();
+    const wb = XLSX.utils.book_new();
+    for (const s of sheets) {
+      const ws = XLSX.utils.aoa_to_sheet(s.rows);
+      ws["!cols"] = s.widths.map(w => ({ wch: w }));
+      XLSX.utils.book_append_sheet(wb, ws, s.name);
+    }
+    files.unshift({ name: xlsxName, type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    base64: XLSX.write(wb, { type: "base64", bookType: "xlsx" }) });
+  } catch { toast("Couldn't build the Excel file (no internet?). Saving the count file only."); }
+  if (driveUrl) {
+    busy("Saving to Google Drive…");
+    try {
+      const r = await drivePost(files);
+      busy(null);
+      if (r.ok) { toast("Saved to Google Drive > Inventory Files: " + r.saved[0]); return true; }
+      toast("Google Drive said: " + r.error);
+    } catch (err) {
+      busy(null);
+      toast("Couldn't reach Google Drive (" + err.message + "). Saving on the phone instead.");
+    }
+  }
+  const objs = files.map(f => new File([f.base64 ? Uint8Array.from(atob(f.base64), c => c.charCodeAt(0)) : f.text], f.name, { type: f.type }));
+  try {
+    if (navigator.canShare && navigator.canShare({ files: objs })) { await navigator.share({ files: objs, title: xlsxName }); return true; }
+  } catch (err) { if (err.name === "AbortError") return false; }
+  for (const f of objs) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); }
+  toast("Saved to Downloads: " + xlsxName);
+  return true;
+}
+
+const GROUP_ORDER = n => { const i = GROUPS.findIndex(g => g.name === n); return i < 0 ? 99 : i; };
+const PRINTER_ORDER = { CSI: 0, P4: 1, "Bead & poly": 2 };
 async function exportCount() {
   const t = totals();
   const out = { app: "skid-count", version: 1, exported: new Date().toISOString(), started: count.started,
                 listMade: list?.made ?? null, sheet: list?.sheet ?? null,
                 totals: Object.fromEntries([...t].map(([p, r]) => [p, { qty: r.qty, unit: unitFor(p), skids: r.skids }])),
                 entries: count.entries };
-  const d = new Date(), name = `count-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.json`;
-  const file = new File([JSON.stringify(out, null, 1)], name, { type: "application/json" });
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); toast("Count shared"); return; }
-  } catch (err) { if (err.name === "AbortError") return; }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-  toast("Saved " + name + " to Downloads");
+  // Totals sheet: everything counted, plus anything that had stock last week but wasn't counted
+  const parts = new Set([...t.keys(), ...(list?.items || []).filter(i => i.last > 0).map(i => i.part)]);
+  const rows = [...parts].map(p => info(p)).sort((a, b) =>
+    (PRINTER_ORDER[printerOf(a)] ?? 3) - (PRINTER_ORDER[printerOf(b)] ?? 3) || GROUP_ORDER(groupOf(a)) - GROUP_ORDER(groupOf(b)) || a.name.localeCompare(b.name));
+  const totalsRows = [["Printer", "Type", "Pattern", "Part#", "2P#", "This week", "Last week", "Change", "Unit", "Skids", "Check"]];
+  for (const it of rows) {
+    const r = t.get(it.part), now = r ? r.qty : null, f = flag(now, it.last);
+    totalsRows.push([printerOf(it), it.unknown ? "Not on the list" : groupOf(it), it.name, it.part, it.vendor || "",
+                     now, it.last ?? null, now != null && it.last != null ? now - it.last : null, it.unit || unitFor(it.part),
+                     r ? r.skids : 0, f ? f.text : ""]);
+  }
+  const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Vendor serial"]];
+  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.serial || ""]);
+  await saveFiles(`Count ${usDay()}.xlsx`, `count-${isoDay()}.json`, out, [
+    { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] },
+    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 14] }]);
 }
 
 /* ================= RECEIVING =================
@@ -612,8 +702,8 @@ function renderReceive() {
   const n = received.entries.length;
   let html = "";
   html += `<div class="note"><h3>${n ? `${n} skid${n === 1 ? "" : "s"} received` : "Nothing received yet"}</h3>
-    <p>Scan each manufacturer's label as the skids come off the truck. Then export, and on the PC click <b>Load Receiving</b> in Skid Label Generator to print one skid label per skid.</p>
-    <div class="btn-row"><button class="btn" type="button" id="btnRecExport" ${n ? "" : "disabled"}>Export for printing (${n})</button>
+    <p>Scan each manufacturer's label as the skids come off the truck. Then tap <b>Finish</b>: it saves <b>Receiving Then export, and on the PC click <b>Load Receiving</b> in Skid Label Generator to print one skid label per skid.lt;dateThen export, and on the PC click <b>Load Receiving</b> in Skid Label Generator to print one skid label per skid.gt;.xlsx</b> to Google Drive. On the PC, <b>Load Receiving</b> in Skid Label Generator prints one skid label per skid.</p>
+    <div class="btn-row"><button class="btn" type="button" id="btnRecExport" ${n ? "" : "disabled"}>Finish &amp; save to Google Drive (${n})</button>
     <div id="recClearArea"><button class="btn danger" type="button" id="btnRecClear" ${n ? "" : "disabled"}>Clear received list</button></div></div></div>`;
   if (n) {
     html += `<div class="section-title">Received (newest first)</div>` + received.entries.slice().reverse().map(e => {
@@ -1058,17 +1148,15 @@ function saveReceived() {
 }
 async function exportReceived() {
   const out = { app: "skid-count", kind: "receiving", version: 1, exported: new Date().toISOString(), entries: received.entries };
-  const d = new Date(), name = `receiving-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}-${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}.json`;
-  await shareFile(name, out, "Receiving");
-}
-async function shareFile(name, obj, what) {
-  const file = new File([JSON.stringify(obj, null, 1)], name, { type: "application/json" });
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); toast(what + " shared"); return; }
-  } catch (err) { if (err.name === "AbortError") return; }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-  toast("Saved " + name + " to Downloads");
+  const d = new Date(), hm = pad2(d.getHours()) + pad2(d.getMinutes());
+  const rows = [["Time", "2P#", "Part#", "Pattern", "Printer", "Mil", "Height", "Qty", "Unit", "Vendor serial", "Their name"]];
+  for (const e of received.entries) {
+    const it = e.part ? info(e.part) : null;
+    rows.push([timeOf(e.t), e.vendor || "", e.part || "", it ? it.name : "Not matched", it ? printerOf(it) : "",
+               it?.mil || "", it?.height || "", e.qty, e.unit || "", e.serial || "", e.art || ""]);
+  }
+  await saveFiles(`Receiving ${usDay(d)} ${hm}.xlsx`, `receiving-${isoDay(d)}-${hm}.json`, out,
+    [{ name: "Received", rows, widths: [16, 9, 17, 26, 11, 5, 7, 8, 5, 13, 26] }]);
 }
 
 let mode = store.get("skidcount.mode", "count");
@@ -1114,7 +1202,22 @@ document.addEventListener("click", e => {
   }
   if (e.target.id === "btnRecClearNo") renderReceive();
   if (e.target.id === "btnRecClearYes") { received = { started: new Date().toISOString(), entries: [] }; saveRec(); render(); toast("Received list cleared"); }
-  if (e.target.id === "btnLoad" || e.target.id === "btnLoadTop") $("fileList").click();
+  if (e.target.id === "btnLoad") $("fileList").click();
+  if (e.target.id === "btnLoadTop") { if (driveUrl) syncList(false); else $("fileList").click(); }
+  if (e.target.id === "btnSync") syncList(false);
+  if (e.target.id === "btnDriveSave") {
+    const url = $("driveInput").value.trim();
+    if (url && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(url) && !/^http:\/\/localhost/.test(url)) {
+      $("driveStatus").textContent = "That doesn't look like the web app link. It starts with https://script.google.com/macros/s/ and ends with /exec."; return;
+    }
+    driveUrl = url; store.set("skidcount.drive", url);
+    if (!url) { render(); toast("Google Drive link removed"); return; }
+    $("driveStatus").textContent = "Testing…";
+    driveGet("ping").then(r => {
+      $("driveStatus").textContent = r.ok ? "Works. Getting the material list…" : "The script answered with an error: " + r.error;
+      if (r.ok) syncList(false).then(render);
+    }).catch(err => { $("driveStatus").textContent = "Couldn't reach it: " + err.message + ". Check the link, and that the script is deployed with access for Anyone."; });
+  }
   if (e.target.id === "btnExport") exportCount();
   if (e.target.id === "btnNew") {
     $("newArea").innerHTML = `<div class="confirm"><b>Clear all ${count.entries.length} skids on this phone?</b>
@@ -1133,9 +1236,10 @@ function toast(msg) {
 }
 // keep the screen on while counting, if the phone allows it
 async function wake() { try { await navigator.wakeLock?.request("screen"); } catch {} }
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { wake(); syncList(true); } });
 wake();
 setMode(mode);
+syncList(true);      // newest material list from Google Drive, if the link is set
 </script>
 </body>
 </html>
