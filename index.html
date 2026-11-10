@@ -210,8 +210,9 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   <section class="panel" id="panel-setup" hidden></section>
 </main>
 
-<!-- no accept filter: Android can grey out .json files from Google Drive; the file is checked when loaded -->
-<input type="file" id="fileList" hidden>
+<!-- A non-image accept list makes Android open its document picker (with Google Drive in the side menu) instead of
+     the Camera / My Files chooser. octet-stream and text/plain cover .json files Drive reports without a JSON type. -->
+<input type="file" id="fileList" accept=".json,application/json,text/plain,application/octet-stream" hidden>
 
 <script>
 "use strict";
