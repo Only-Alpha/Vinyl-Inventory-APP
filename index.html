@@ -1207,8 +1207,9 @@ document.addEventListener("click", e => {
   if (e.target.id === "btnSync") syncList(false);
   if (e.target.id === "btnDriveSave") {
     const url = $("driveInput").value.trim();
-    if (url && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec/.test(url) && !/^http:\/\/localhost/.test(url)) {
-      $("driveStatus").textContent = "That doesn't look like the web app link. It starts with https://script.google.com/macros/s/ and ends with /exec."; return;
+    // personal: script.google.com/macros/s/<id>/exec   company account: script.google.com/a/macros/<domain>/s/<id>/exec
+    if (url && !/^https:\/\/script\.google\.com\/(a\/macros\/[\w.-]+|macros)\/s\/[\w-]+\/exec/.test(url) && !/^http:\/\/localhost/.test(url)) {
+      $("driveStatus").textContent = "That doesn't look like the web app link. It starts with https://script.google.com/ and ends with /exec."; return;
     }
     driveUrl = url; store.set("skidcount.drive", url);
     if (!url) { render(); toast("Google Drive link removed"); return; }
@@ -1216,7 +1217,7 @@ document.addEventListener("click", e => {
     driveGet("ping").then(r => {
       $("driveStatus").textContent = r.ok ? "Works. Getting the material list…" : "The script answered with an error: " + r.error;
       if (r.ok) syncList(false).then(render);
-    }).catch(err => { $("driveStatus").textContent = "Couldn't reach it: " + err.message + ". Check the link, and that the script is deployed with access for Anyone."; });
+    }).catch(err => { $("driveStatus").textContent = "Couldn't reach it (" + err.message + "). Most likely the deployment's \"Who has access\" is \"Anyone within Only Alpha\": it has to be \"Anyone\" (Deploy > Manage deployments > edit)."; });
   }
   if (e.target.id === "btnExport") exportCount();
   if (e.target.id === "btnNew") {
