@@ -1,0 +1,9 @@
+{
+  "name": "Vinyl Stock (view only)",
+  "short_name": "Vinyl Stock",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f3f5f7",
+  "theme_color": "#16324f",
+  "icons": []
+}

@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16324f">
+<meta name="robots" content="noindex">
+<title>Vinyl Stock</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+/* Production viewer: VIEW ONLY. Scan an ALPHA skid label or search, see the qty from the last inventory count.
+   Nothing on this page saves, changes or uploads anything. Same look as the Vinyl Inventory app. */
+:root {
+  --bg: #f3f5f7; --surface: #ffffff; --ink: #17212b; --muted: #5d6b78; --line: #d6dde3;
+  --brand: #16324f; --brand-ink: #ffffff; --accent: #1f6fd1; --p4: #00c714;
+  --mil20: #ffff31; --mil28: #ff8056; --milother: #a0ffd1;
+  --ok: #1b7f3b; --warn: #b35c00; --bad: #c42b1c; --ok-bg: #e3f4e8; --warn-bg: #fff1dc; --bad-bg: #fde6e3;
+  --font: "Barlow", system-ui, "Segoe UI", Roboto, sans-serif;
+  --num: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151b; --surface: #18212a; --ink: #e7edf2; --muted: #9aa8b5; --line: #2a3742;
+    --brand: #1d4166; --accent: #6aa7f0; --ok: #5fd087; --warn: #f0a650; --bad: #ff7a6b;
+    --ok-bg: #16301f; --warn-bg: #33250f; --bad-bg: #3a1a16; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151b; --surface: #18212a; --ink: #e7edf2; --muted: #9aa8b5; --line: #2a3742;
+  --brand: #1d4166; --accent: #6aa7f0; --ok: #5fd087; --warn: #f0a650; --bad: #ff7a6b;
+  --ok-bg: #16301f; --warn-bg: #33250f; --bad-bg: #3a1a16; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 17px/1.4 var(--font); padding-bottom: env(safe-area-inset-bottom, 0px); -webkit-tap-highlight-color: transparent; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 720px; margin: 0 auto; }
+
+header { position: sticky; top: 0; z-index: 5; background: var(--brand); color: var(--brand-ink); padding-top: env(safe-area-inset-top, 0px); }
+header .wrap { display: flex; align-items: center; gap: 10px; padding-block: 12px; }
+header h1 { margin: 0; font: 700 24px/1 var(--num); letter-spacing: .04em; text-transform: uppercase; }
+.viewonly { font: 700 12px var(--font); letter-spacing: .08em; text-transform: uppercase; border: 1.5px solid rgb(255 255 255 / .7); border-radius: 999px; padding: 3px 9px; }
+header .asof { margin-left: auto; text-align: right; font-size: 13px; opacity: .9; line-height: 1.15; }
+header .asof b { display: block; font: 700 20px/1 var(--num); }
+
+.status { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 15px; font-weight: 600; }
+.status.warn { background: var(--warn-bg); color: var(--warn); }
+.status.bad { background: var(--bad-bg); color: var(--bad); }
+
+.scan { margin-top: 14px; width: 100%; min-height: 84px; border: 0; border-radius: 14px; background: var(--brand); color: var(--brand-ink);
+  display: flex; align-items: center; justify-content: center; gap: 12px; font: 700 23px var(--font); }
+.scan svg { width: 34px; height: 34px; }
+.search { width: 100%; margin-top: 12px; padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); font-size: 18px; }
+.filters { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.filters button { border: 2px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 15px; }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.filters span { margin-left: auto; color: var(--muted); font-size: 14px; }
+
+.list { padding-block: 6px 40px; }
+.item { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 12px 2px;
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; }
+.item .name { font-weight: 600; min-width: 0; }
+.item .sub { color: var(--muted); font-size: 14px; min-width: 0; grid-column: 1; }
+.item .q { grid-row: 1 / span 2; grid-column: 2; text-align: right; font: 700 24px/1.05 var(--num); font-variant-numeric: tabular-nums; }
+.item .q small { display: block; font: 500 13px var(--font); color: var(--muted); }
+.item .q.none { color: var(--muted); font-size: 18px; }
+.empty { color: var(--muted); padding: 28px 0; text-align: center; }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; text-transform: uppercase; vertical-align: 2px; }
+.chip.p4 { background: var(--p4); color: #062b0a; }
+.chip.csi { background: var(--line); color: var(--ink); }
+.mil { display: inline-grid; place-items: center; min-width: 30px; height: 22px; border-radius: 5px; font: 700 15px var(--num); color: #222; padding: 0 4px; vertical-align: 1px; }
+
+/* detail sheet */
+.scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .45); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { background: var(--surface); width: 100%; max-width: 720px; border-radius: 18px 18px 0 0; max-height: 92vh; overflow-y: auto;
+  padding: 20px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sheet h2 { margin: 0; font: 700 32px/1.05 var(--num); text-transform: uppercase; letter-spacing: .02em; text-wrap: balance; }
+.sheet .meta { color: var(--muted); margin: 6px 0 0; font-size: 15px; }
+.bigqty { margin: 16px 0 6px; background: var(--bg); border-radius: 14px; padding: 16px; text-align: center; }
+.bigqty small { display: block; color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.bigqty b { display: block; font: 700 64px/1 var(--num); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.bigqty b span { font-size: 30px; color: var(--muted); margin-left: 6px; }
+.bigqty.none b { font-size: 34px; color: var(--muted); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0; }
+.facts dt { color: var(--muted); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; align-self: center; }
+.facts dd { margin: 0; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.caveat { color: var(--muted); font-size: 14px; margin: 4px 0 14px; }
+.close { width: 100%; min-height: 58px; border: 2px solid var(--line); background: var(--surface); border-radius: 12px; font-weight: 700; font-size: 19px; }
+.btn2 { width: 100%; min-height: 58px; border: 0; background: var(--brand); color: var(--brand-ink); border-radius: 12px; font-weight: 700; font-size: 19px; margin-top: 10px; }
+
+/* camera */
+.cam { position: fixed; inset: 0; background: #000; z-index: 30; display: flex; flex-direction: column; }
+.cam video { flex: 1; width: 100%; object-fit: cover; min-height: 0; }
+.cam .aim { position: absolute; left: 8%; right: 8%; top: 38%; height: 18%; border: 3px solid rgb(255 255 255 / .85); border-radius: 12px; box-shadow: 0 0 0 9999px rgb(0 0 0 / .35); pointer-events: none; }
+.cam .hint { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 14px); left: 0; right: 0; text-align: center; color: #fff; font-weight: 600; text-shadow: 0 1px 3px #000; padding-inline: 16px; }
+.cam .bar { padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; gap: 10px; align-items: center; color: #fff; background: #000; }
+.cam .bar span { flex: 1; font-size: 15px; }
+.cam .bar button { background: #fff; color: #000; border: 0; border-radius: 10px; padding: 14px 22px; font-weight: 700; }
+
+.nolink { padding-block: 30px; }
+.nolink h2 { font: 700 26px var(--num); text-transform: uppercase; margin: 0 0 8px; }
+.nolink p { color: var(--muted); }
+.nolink input { width: 100%; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--surface); font-size: 15px; }
+footer { color: var(--muted); font-size: 13px; text-align: center; padding: 0 0 30px; }
+footer button { background: none; border: 0; color: var(--accent); font-size: 13px; text-decoration: underline; padding: 6px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 12px 18px; border-radius: 10px; z-index: 40; font-weight: 600; max-width: calc(100% - 32px); text-align: center; }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(30px); opacity: .6 } } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Vinyl Stock</h1><span class="viewonly">View only</span>
+    <div class="asof" id="asof"></div>
+  </div>
+</header>
+
+<main class="wrap" id="main" hidden>
+  <div class="status" id="status" hidden></div>
+  <button class="scan" id="btnScan" type="button">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
+    Scan skid label
+  </button>
+  <input class="search" id="find" type="search" placeholder="Search pattern, part# or 2P#" autocomplete="off">
+  <div class="filters">
+    <button type="button" id="fStock" aria-pressed="true">In stock</button>
+    <button type="button" id="fAll" aria-pressed="false">All materials</button>
+    <span id="shown"></span>
+  </div>
+  <div class="list" id="list"></div>
+</main>
+
+<main class="wrap nolink" id="nolink" hidden>
+  <h2>Link needed</h2>
+  <p>Open this page from the link the office sent you. It has the key that loads the stock list.</p>
+  <p>Or paste that link here:</p>
+  <input id="pasteLink" placeholder="https://…" autocomplete="off">
+  <button class="btn2" type="button" id="btnLink">Use this link</button>
+</main>
+
+<footer id="foot" hidden>Shows the qty from the last inventory count. Nothing here can be changed.<br><button type="button" id="btnForget">Remove the link from this phone</button></footer>
+
+<script>
+"use strict";
+/* Data comes only from the read-only production script (counter/production-script.gs), whose link is in the
+   address the office hands out: .../production/#s=<script id>. The link is kept on this phone after the first open.
+   This page never sends anything anywhere except that one GET. */
+const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = n => Math.round(n).toLocaleString("en-US");
+
+/* ---- the link ---- */
+function linkFrom(text) {
+  text = String(text || "").trim();
+  let m = text.match(/[#&]s=([\w-]{20,})/) || text.match(/\/macros\/s\/([\w-]{20,})\//);
+  if (m) return "https://script.google.com/macros/s/" + m[1] + "/exec";
+  m = text.match(/[#&]u=([^&]+)/);                     // local testing only: #u=/mock-production
+  if (m) { const u = decodeURIComponent(m[1]); if (u.startsWith("/") && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return u; }
+  return null;
+}
+let src = linkFrom(location.hash) || store.get("stock.src", null);
+if (linkFrom(location.hash)) { store.set("stock.src", src); history.replaceState(null, "", location.pathname); }
+
+/* ---- the list ---- */
+let data = store.get("stock.cache", null);       // { asOf, updated, items, fetched }
+let filter = store.get("stock.filter", "stock");
+let loadError = "";
+
+async function load(quiet) {
+  if (!src) return;
+  try {
+    const r = await fetch(src + (src.includes("?") ? "&" : "?") + "t=" + Date.now()).then(r => r.json());
+    if (!r.ok) throw new Error(r.error || "no list");
+    data = { asOf: r.asOf, updated: r.updated, items: r.items || [], fetched: new Date().toISOString() };
+    store.set("stock.cache", data); loadError = "";
+  } catch (err) {
+    loadError = err.message || String(err);
+    if (!quiet && data) toast("Couldn't reach Google. Showing the list this phone saved.");
+  }
+  render();
+}
+
+function milBadge(it) {
+  if (!it.mil) return "";
+  const t = it.kind === "Textured";
+  const c = t ? "var(--surface)" : it.mil === "20" ? "var(--mil20)" : it.mil === "28" ? "var(--mil28)" : "var(--milother)";
+  return `<span class="mil" style="background:${c};${t ? "border:2px solid var(--ink);color:var(--ink)" : ""}">${t ? "TXT" : it.mil}</span>`;
+}
+const lineChip = it => it.line ? `<span class="chip ${it.line === "P4" ? "p4" : "csi"}">${esc(it.line)}</span>` : "";
+function desc(it) {
+  const b = [];
+  if (it.mil) b.push(it.mil + " mil");
+  if (it.height) b.push(it.height + "″");
+  if (it.kind && it.kind !== "Poly" && it.kind !== "Bead") b.push(it.kind);
+  return b.join(" · ");
+}
+const has = it => it.qty != null && it.qty > 0;
+/* "11/10/26" -> "Tue 11/10/26" */
+function asOfText(d) {
+  const m = String(d || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return d || "";
+  const day = new Date(+m[3] < 100 ? 2000 + +m[3] : +m[3], m[1] - 1, m[2]);
+  return day.toLocaleDateString("en-US", { weekday: "short" }) + " " + d;
+}
+
+function render() {
+  const linked = !!src;
+  $("main").hidden = !linked; $("foot").hidden = !linked; $("nolink").hidden = linked;
+  $("asof").innerHTML = data?.asOf ? `Last count<b>${esc(asOfText(data.asOf))}</b>` : "";
+  if (!linked) return;
+
+  const st = $("status");
+  if (!data) { st.hidden = false; st.className = "status " + (loadError ? "bad" : "warn"); st.textContent = loadError ? "Couldn't load the stock list: " + loadError : "Loading the stock list…"; }
+  else if (loadError) { st.hidden = false; st.className = "status warn"; st.textContent = "No connection. Showing the list this phone saved " + new Date(data.fetched).toLocaleString([], { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) + "."; }
+  else if (!data.asOf) { st.hidden = false; st.className = "status warn"; st.textContent = "No inventory count has been done yet."; }
+  else st.hidden = true;
+
+  $("fStock").setAttribute("aria-pressed", filter === "stock"); $("fAll").setAttribute("aria-pressed", filter === "all");
+  const s = $("find").value.trim().toLowerCase();
+  let rows = (data?.items || []).filter(i => !s || (i.name + " " + i.part + " " + (i.vendor || "")).toLowerCase().includes(s));
+  if (filter === "stock" && !s) rows = rows.filter(has);       // a search always looks through everything
+  rows.sort((a, b) => a.name.localeCompare(b.name) || a.part.localeCompare(b.part));
+  $("shown").textContent = data ? rows.length + (rows.length === 1 ? " material" : " materials") : "";
+  $("list").innerHTML = rows.map(i => `<button class="item" type="button" data-part="${esc(i.part)}">
+      <span class="name">${milBadge(i)} ${esc(i.name)} ${lineChip(i)}</span>
+      <span class="q ${has(i) ? "" : "none"}">${has(i) ? fmt(i.qty) + `<small>${esc(i.unit || "yd")}</small>` : "0"}</span>
+      <span class="sub">${esc(i.part)}${desc(i) ? " · " + esc(desc(i)) : ""}${i.vendor ? " · " + esc(i.vendor) : ""}</span>
+    </button>`).join("") || (data ? `<p class="empty">${s ? "No match." : "Nothing in stock at the last count."}</p>` : "");
+}
+
+/* ---- one material ---- */
+function show(part) {
+  const it = (data?.items || []).find(i => i.part === part);
+  closeSheet();
+  const scrim = document.createElement("div");
+  scrim.className = "scrim"; scrim.id = "scrim";
+  scrim.innerHTML = it ? `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+      <h2 id="dTitle">${esc(it.name)}</h2>
+      <p class="meta">${milBadge(it)} ${lineChip(it)} ${esc(desc(it))}</p>
+      <div class="bigqty ${has(it) ? "" : "none"}">
+        <small>At the last count${data.asOf ? " · " + esc(asOfText(data.asOf)) : ""}</small>
+        <b>${has(it) ? fmt(it.qty) + `<span>${esc(it.unit || "yd")}</span>` : "None counted"}</b>
+      </div>
+      <p class="caveat">This is what was counted that day, not live stock. Material used since then isn't taken off.</p>
+      <dl class="facts">
+        <dt>Part#</dt><dd>${esc(it.part)}</dd>
+        ${it.vendor ? `<dt>2P#</dt><dd>${esc(it.vendor)}</dd>` : ""}
+        ${it.line ? `<dt>Printer</dt><dd>${it.line === "P4" ? "P4 (printer #4)" : it.line === "CSI" ? "CSI (old printer)" : esc(it.line)}</dd>` : ""}
+      </dl>
+      <button class="close" type="button" data-close>Close</button>
+    </div>`
+    : `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+      <h2 id="dTitle">Not on the list</h2>
+      <p class="meta">${esc(part)} isn't in the stock list. Ask the office.</p>
+      <button class="close" type="button" data-close style="margin-top:16px">Close</button>
+    </div>`;
+  document.body.appendChild(scrim);
+  scrim.addEventListener("click", e => { if (e.target === scrim || e.target.closest("[data-close]")) closeSheet(); });
+}
+function closeSheet() { $("scrim")?.remove(); }
+
+/* ---- camera: our skid label's barcode is the part# by itself ---- */
+let stream = null, detector = null, timer = null;
+function camMsg(t) { const m = $("camMsg"); if (m) m.textContent = t; }
+async function startScan() {
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { toast("No camera here. Search instead."); return; }
+  const cam = document.createElement("div");
+  cam.className = "cam"; cam.id = "cam";
+  cam.innerHTML = `<video id="vid" playsinline muted></video><div class="aim"></div>
+    <div class="hint">Aim at the barcode on the skid label</div>
+    <div class="bar"><span id="camMsg">Starting camera…</span><button type="button" id="camClose">Close</button></div>`;
+  document.body.appendChild(cam);
+  $("camClose").onclick = stopScan;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}
+    const v = $("vid"); v.srcObject = stream; await v.play();
+    camMsg("Looking for the barcode…");
+    if ("BarcodeDetector" in window) { detector = new BarcodeDetector({ formats: ["code_128", "code_39"] }); loopDetector(v); }
+    else { await loadZxing(); loopZxing(v); }
+  } catch (err) { camMsg("Camera blocked: " + (err.message || err) + ". Allow camera access for this site."); }
+}
+function stopScan() { clearTimeout(timer); timer = null; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("cam")?.remove(); }
+function gotCode(raw) {
+  const text = String(raw || "").trim().toUpperCase();
+  if (PART_RX.test(text)) { try { navigator.vibrate?.(60); } catch {} stopScan(); show(text); return true; }
+  camMsg("Read “" + text.slice(0, 30) + "”. Scan the ALPHA skid label's barcode.");
+  return false;
+}
+async function loopDetector(v) {
+  if (!stream) return;
+  try { for (const c of await detector.detect(v)) if (gotCode(c.rawValue)) return; } catch {}
+  timer = setTimeout(() => loopDetector(v), 120);
+}
+function loadZxing() {
+  if (window.ZXing) return Promise.resolve();
+  return new Promise((ok, bad) => {
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js";
+    s.onload = ok; s.onerror = () => bad(new Error("barcode reader didn't load (no internet?)"));
+    document.head.appendChild(s);
+  });
+}
+function loopZxing(v) {
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39]);
+  const reader = new ZXing.MultiFormatReader(); reader.setHints(hints);
+  const canvas = document.createElement("canvas");
+  const tick = () => {
+    if (!stream) return;
+    try {
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      canvas.getContext("2d", { willReadFrequently: true }).drawImage(v, 0, 0);
+      const res = reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(canvas))));
+      if (res && gotCode(res.getText())) return;
+    } catch {}
+    timer = setTimeout(tick, 150);
+  };
+  tick();
+}
+
+let toastTimer;
+function toast(msg) {
+  let t = document.querySelector(".toast");
+  if (!t) { t = document.createElement("div"); t.className = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = msg; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), 3500);
+}
+
+/* ---- wiring ---- */
+$("btnScan").onclick = startScan;
+$("find").addEventListener("input", render);
+$("find").addEventListener("keydown", e => { if (e.key === "Enter") { const t = e.target.value.trim().toUpperCase(); if (PART_RX.test(t)) show(t); else $("list").querySelector("[data-part]")?.click(); } });
+$("fStock").onclick = () => { filter = "stock"; store.set("stock.filter", filter); render(); };
+$("fAll").onclick = () => { filter = "all"; store.set("stock.filter", filter); render(); };
+$("list").addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) show(b.dataset.part); });
+$("btnLink").onclick = () => {
+  const u = linkFrom($("pasteLink").value);
+  if (!u) { toast("That isn't the stock link. Ask the office for it."); return; }
+  src = u; store.set("stock.src", src); render(); load();
+};
+$("btnForget").onclick = () => { store.del("stock.src"); store.del("stock.cache"); src = null; data = null; render(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape") { stopScan(); closeSheet(); } });
+// fresh numbers whenever the app is opened again, and every 10 minutes while it's open
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") load(true); });
+setInterval(() => load(true), 10 * 60 * 1000);
+render(); load();
+</script>
+</body>
+</html>
