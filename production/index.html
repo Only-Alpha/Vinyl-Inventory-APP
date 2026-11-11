@@ -56,6 +56,12 @@ header .asof b { display: block; font: 700 20px/1 var(--num); }
 .scan { margin-top: 14px; width: 100%; min-height: 84px; border: 0; border-radius: 14px; background: var(--brand); color: var(--brand-ink);
   display: flex; align-items: center; justify-content: center; gap: 12px; font: 700 23px var(--font); }
 .scan svg { width: 34px; height: 34px; }
+.manual { margin-top: 10px; width: 100%; min-height: 60px; border: 2px solid var(--line); border-radius: 14px; background: var(--surface); font: 700 19px var(--font); }
+.pk { display: grid; gap: 12px; margin-top: 14px; }
+.pk label { display: grid; gap: 4px; font-weight: 600; }
+.pk select { width: 100%; font: 600 19px var(--font); padding: 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.pkbtns { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
+.pkbtns .btn2 { margin-top: 0; }
 .search { width: 100%; margin-top: 12px; padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); font-size: 18px; }
 .filters { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
 .filters button { border: 2px solid var(--line); background: var(--surface); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 15px; }
@@ -127,6 +133,7 @@ footer button { background: none; border: 0; color: var(--accent); font-size: 13
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
     Scan skid label
   </button>
+  <button class="manual" id="btnPick" type="button">Manual Search</button>
   <input class="search" id="find" type="search" placeholder="Search pattern, part# or 2P#" autocomplete="off">
   <div class="filters">
     <button type="button" id="fStock" aria-pressed="true">In stock</button>
@@ -271,6 +278,80 @@ function show(part) {
 }
 function closeSheet() { $("scrim")?.remove(); }
 
+/* ---- Manual Search: Printer > Type > Pattern dropdowns (same order as the Vinyl Inventory app) ---- */
+const GROUPS = [
+  { name: "20 mil wall", test: i => i.mil === "20" && i.height === "39" },
+  { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
+  { name: "20 mil floor", test: i => i.mil === "20" && i.height === "72" },
+  { name: "28 mil floor", test: i => i.mil === "28" && i.height === "72" },
+  { name: "Textured", test: i => i.kind === "Textured" },
+  { name: "49″ 20 mil wall", test: i => i.mil === "20" && i.height === "49" },
+  { name: "AG 17/13 mil", test: i => (i.mil === "17" && i.height === "47.5") || (i.mil === "13" && i.height === "72") },
+  { name: "AG 13/11 mil", test: i => (i.mil === "13" && i.height === "47.5") || (i.mil === "11" && i.height === "72") },
+  { name: "Standard bead", test: i => i.kind === "Bead" && beadType(i) === "Standard" },
+  { name: "Uni-Bead", test: i => i.kind === "Bead" && beadType(i) === "Uni-Bead" },
+  { name: "EW (Esther Williams) bead", test: i => i.kind === "Bead" && beadType(i).startsWith("EW") },
+  { name: "Custom bead", test: i => i.kind === "Bead" && beadType(i) === "Custom" },
+  { name: "Other bead", test: i => i.kind === "Bead" },
+  { name: "Poly", test: i => i.kind === "Poly" },
+];
+function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
+function pickLabel(i) {
+  if (i.kind === "Bead") return i.name.replace(/\s*Bead\s*\([^)]*\)\s*$/, "");
+  if (i.kind === "Poly") return `${i.name} · ${i.mil} mil`;
+  return i.name;
+}
+const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : "Bead & poly";
+const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
+let pickMemory = store.get("stock.pick", { printer: "", group: "" });
+
+function openPicker() {
+  const all = data?.items || [];
+  if (!all.length) { toast("The stock list hasn't loaded yet."); return; }
+  closeSheet();
+  const scrim = document.createElement("div");
+  scrim.className = "scrim"; scrim.id = "scrim";
+  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
+    <h2 id="pkTitle">Manual Search</h2>
+    <div class="pk">
+      <label>Printer<select id="pkPrinter"></select></label>
+      <label>Type<select id="pkGroup"></select></label>
+      <label>Pattern<select id="pkPart"></select></label>
+    </div>
+    <div class="pkbtns">
+      <button class="close" type="button" data-close>Cancel</button>
+      <button class="btn2" type="button" id="pkGo">Show qty</button>
+    </div></div>`;
+  document.body.appendChild(scrim);
+  const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
+  const opts = (el, values, keep) => {
+    el.innerHTML = values.map(v => `<option value="${esc(v.value)}">${esc(v.label)}</option>`).join("");
+    if (keep && values.some(v => v.value === keep)) el.value = keep;
+  };
+  const printers = ["CSI", "P4", "Bead & poly"].filter(p => all.some(i => printerOf(i) === p));
+  opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
+  const fillParts = () => {
+    const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
+      .sort((a, b) => pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part));
+    // AG groups mix walls and floors
+    const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
+    opts(T, hits.map(i => ({ value: i.part, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (has(i) ? ` (${fmt(i.qty)} ${i.unit || "yd"})` : "") })));
+  };
+  const fillGroups = keep => {
+    const names = [...GROUPS.map(g => g.name), "Other"].filter(n => all.some(i => printerOf(i) === P.value && groupOf(i) === n));
+    opts(G, names.map(n => ({ value: n, label: n })), keep);
+    fillParts();
+  };
+  P.onchange = () => fillGroups(); G.onchange = fillParts;
+  fillGroups(pickMemory.group);
+  $("pkGo").onclick = () => {
+    if (!T.value) return;
+    pickMemory = { printer: P.value, group: G.value }; store.set("stock.pick", pickMemory);
+    show(T.value);
+  };
+  scrim.addEventListener("click", e => { if (e.target === scrim || e.target.closest("[data-close]")) closeSheet(); });
+}
+
 /* ---- camera: our skid label's barcode is the part# by itself ---- */
 let stream = null, detector = null, timer = null;
 function camMsg(t) { const m = $("camMsg"); if (m) m.textContent = t; }
@@ -340,6 +421,7 @@ function toast(msg) {
 
 /* ---- wiring ---- */
 $("btnScan").onclick = startScan;
+$("btnPick").onclick = openPicker;
 $("find").addEventListener("input", render);
 $("find").addEventListener("keydown", e => { if (e.key === "Enter") { const t = e.target.value.trim().toUpperCase(); if (PART_RX.test(t)) show(t); else $("list").querySelector("[data-part]")?.click(); } });
 $("fStock").onclick = () => { filter = "stock"; store.set("stock.filter", filter); render(); };
