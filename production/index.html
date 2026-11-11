@@ -93,6 +93,7 @@ header .asof b { display: block; font: 700 20px/1 var(--num); }
 .bigqty b { display: block; font: 700 64px/1 var(--num); font-variant-numeric: tabular-nums; margin-top: 6px; }
 .bigqty b span { font-size: 30px; color: var(--muted); margin-left: 6px; }
 .bigqty.none b { font-size: 34px; color: var(--muted); }
+.bigqty .skids { display: block; font: 700 24px/1 var(--num); font-style: normal; margin-top: 8px; color: var(--ink); }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 14px 0; }
 .facts dt { color: var(--muted); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; align-self: center; }
 .facts dd { margin: 0; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
@@ -214,6 +215,8 @@ function desc(it) {
   return b.join(" · ");
 }
 const has = it => it.qty != null && it.qty > 0;
+/* "3 skids" / "1 skid" (from the SKIDS column of the weekly count sheet); "" when it wasn't filled in */
+const skidText = it => it.skids > 0 ? `${fmt(it.skids)} skid${Math.round(it.skids) === 1 ? "" : "s"}` : "";
 /* "11/10/26" -> "Tue 11/10/26" */
 function asOfText(d) {
   const m = String(d || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
@@ -242,7 +245,7 @@ function render() {
   $("shown").textContent = data ? rows.length + (rows.length === 1 ? " material" : " materials") : "";
   $("list").innerHTML = rows.map(i => `<button class="item" type="button" data-part="${esc(i.part)}">
       <span class="name">${milBadge(i)} ${esc(i.name)} ${lineChip(i)}</span>
-      <span class="q ${has(i) ? "" : "none"}">${has(i) ? fmt(i.qty) + `<small>${esc(i.unit || "yd")}</small>` : "0"}</span>
+      <span class="q ${has(i) ? "" : "none"}">${has(i) ? fmt(i.qty) + `<small>${esc(i.unit || "yd")}${skidText(i) ? " · " + skidText(i) : ""}</small>` : "0"}</span>
       <span class="sub">${esc(i.part)}${desc(i) ? " · " + esc(desc(i)) : ""}${i.vendor ? " · " + esc(i.vendor) : ""}</span>
     </button>`).join("") || (data ? `<p class="empty">${s ? "No match." : "Nothing in stock at the last count."}</p>` : "");
 }
@@ -259,6 +262,7 @@ function show(part) {
       <div class="bigqty ${has(it) ? "" : "none"}">
         <small>At the last count${data.asOf ? " · " + esc(asOfText(data.asOf)) : ""}</small>
         <b>${has(it) ? fmt(it.qty) + `<span>${esc(it.unit || "yd")}</span>` : "None counted"}</b>
+        ${has(it) && skidText(it) ? `<em class="skids">on ${skidText(it)}</em>` : ""}
       </div>
       <p class="caveat">This is what was counted that day, not live stock. Material used since then isn't taken off.</p>
       <dl class="facts">
@@ -335,7 +339,7 @@ function openPicker() {
       .sort((a, b) => pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part));
     // AG groups mix walls and floors
     const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
-    opts(T, hits.map(i => ({ value: i.part, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (has(i) ? ` (${fmt(i.qty)} ${i.unit || "yd"})` : "") })));
+    opts(T, hits.map(i => ({ value: i.part, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (has(i) ? ` (${fmt(i.qty)} ${i.unit || "yd"}${skidText(i) ? ", " + skidText(i) : ""})` : "") })));
   };
   const fillGroups = keep => {
     const names = [...GROUPS.map(g => g.name), "Other"].filter(n => all.some(i => printerOf(i) === P.value && groupOf(i) === n));
