@@ -123,12 +123,12 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 /* sheet (enter yards) */
 .scrim { position: fixed; inset: 0; background: rgb(0 0 0 / .45); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
 .sheet { background: var(--surface); width: 100%; max-width: 720px; border-radius: 18px 18px 0 0; padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); max-height: 92vh; overflow-y: auto; }
-.sheet h2 { margin: 0; font: 700 30px/1.05 var(--num); text-transform: uppercase; letter-spacing: .02em; }
+.sheet h2 { margin: 0; font: 700 24px/1.05 var(--num); text-transform: uppercase; letter-spacing: .02em; }
 .sheet .meta { color: var(--muted); margin: 4px 0 12px; font-size: 15px; }
 .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
-.compare div { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
-.compare small { display: block; color: var(--muted); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
-.compare b { font: 700 28px/1.1 var(--num); font-variant-numeric: tabular-nums; }
+.compare div { background: var(--bg); border-radius: 10px; padding: 6px 10px; }
+.compare small { display: block; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.compare b { font: 700 20px/1.1 var(--num); font-variant-numeric: tabular-nums; }
 .qty { display: flex; align-items: center; gap: 10px; }
 .qty input { flex: 1; min-width: 0; font: 700 22px/1 var(--num); text-align: right; padding: 6px 10px; border: 2px solid var(--brand); border-radius: 12px; background: var(--bg); font-variant-numeric: tabular-nums; }
 .qty .unit { font: 700 17px var(--num); color: var(--muted); width: 30px; }
@@ -154,18 +154,18 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .scrim > .sheet > * { flex: none; }
 .scrim > .sheet > .sheetfoot { position: sticky; bottom: 0; margin-top: auto; padding-top: 6px; background: var(--surface); }
 .sheetfoot > .btn-row { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
-.sheetfoot .btn-row .big, .sheetfoot .btn-row .big.primary { min-height: 46px; font-size: 17px; }
+.sheetfoot .btn-row .big, .sheetfoot .btn-row .big.primary { min-height: 34px; font-size: 15px; border-radius: 10px; }
 /* keyboard open (the page shrinks to the space above it): everything smaller, so the pattern, last week and
    this week stay on screen above the amount box */
 @media (max-height: 520px) {
   .scrim > .sheet { padding-top: 6px; }
   .scrim > .sheet > div:first-child { display: none; }
-  .scrim > .sheet h2 { font-size: 22px; }
+  .scrim > .sheet h2 { font-size: 18px; }
   .scrim > .sheet .meta { margin: 0 0 4px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .compare { margin-bottom: 4px; gap: 6px; }
   .compare div { padding: 3px 8px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-  .compare small { font-size: 11px; }
-  .compare b { font-size: 20px; }
+  .compare small { font-size: 10px; }
+  .compare b { font-size: 16px; }
   #weekNote { display: none !important; }
   .loose { margin-top: 4px; padding: 4px 10px; }
   .loose input { width: 20px; height: 20px; }
@@ -177,7 +177,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   .sheetfoot .qty { margin-top: 6px; }
   .sheetfoot .qty input { font-size: 20px; padding: 4px 8px; }
   .sheetfoot > .btn-row { margin-top: 6px; padding-bottom: 6px; }
-  .sheetfoot .btn-row .big, .sheetfoot .btn-row .big.primary { min-height: 38px; font-size: 16px; }
+  .sheetfoot .btn-row .big, .sheetfoot .btn-row .big.primary { min-height: 30px; font-size: 14px; }
 }
 .serial { font-size: 14px; color: var(--muted); margin-top: 8px; }
 
@@ -268,7 +268,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-12.7";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-12.8";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
