@@ -152,6 +152,8 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .scrim > .sheet { height: 100%; max-height: none; max-width: none; border-radius: 0; display: flex; flex-direction: column; padding-top: calc(14px + env(safe-area-inset-top, 0px)); padding-bottom: 0; }
 .scrim > .sheet > .btn-row:last-child { position: sticky; bottom: 0; margin-top: auto; padding-block: 12px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--surface); }
 .scrim > .sheet > * { flex: none; }
+.scrim > .sheet > .sheetfoot { position: sticky; bottom: 0; margin-top: auto; padding-top: 6px; background: var(--surface); }
+.sheetfoot > .btn-row { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
 .serial { font-size: 14px; color: var(--muted); margin-top: 8px; }
 
 /* camera */
@@ -241,7 +243,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-12.3";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-12.4";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -401,25 +403,25 @@ function openSheet(part) {
       <div id="weekBox" data-saved="${t?.qty ?? 0}" data-skids="${t?.skids ?? 0}"><small>This week so far</small><b id="weekNow">${fmt(t?.qty ?? 0)}</b> ${unit}
         <small id="weekNote" style="display:block;text-transform:none;letter-spacing:0">${t ? t.skids + (t.skids === 1 ? " skid saved" : " skids saved") : "nothing saved yet"}</small></div>
     </div>
-    <label for="qty" style="font-weight:600">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
-    <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
-    <div class="qtybtns">
-      <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll to this skid">+ roll</button>
-      <button class="plus" type="button" id="skidPlus" aria-label="Set this skid aside and enter the next one">+ skid</button></div>
     <label class="loose"><input type="checkbox" id="shLoose"><span>Loose rolls, not a skid<small>Rolls going back onto another skid: the amount counts, the skid doesn't.</small></span></label>
-    <div class="qtysum" id="qtySum" hidden></div>
     <div class="skidlist" id="skidList" hidden></div>
     <div class="serial" id="shSerial" hidden></div>
-    <p class="warnline" id="shWarn" hidden></p>
-    <div class="btn-row" style="grid-template-columns:1fr 2fr">
-      <button class="big secondary" type="button" id="shCancel">Cancel</button>
-      <button class="big primary" type="button" id="shSave" style="grid-column:auto">Save</button>
-    </div></div>`;
+    <!-- the amount sits at the bottom, right above Save and the keyboard -->
+    <div class="sheetfoot">
+      <p class="warnline" id="shWarn" hidden></p>
+      <div class="qtybtns">
+        <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll to this skid">+ roll</button>
+        <button class="plus" type="button" id="skidPlus" aria-label="Set this skid aside and enter the next one">+ skid</button></div>
+      <div class="qtysum" id="qtySum" hidden></div>
+      <label for="qty" style="font-weight:600;display:block;margin-top:10px">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
+      <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
+      <div class="btn-row" style="grid-template-columns:1fr 2fr">
+        <button class="big secondary" type="button" id="shCancel">Cancel</button>
+        <button class="big primary" type="button" id="shSave" style="grid-column:auto">Save</button>
+      </div></div></div>`;
   document.body.appendChild(scrim);
   const q = $("qty");
   setTimeout(() => q.focus(), 50);
-  // once the keyboard is up, keep the amount box in view (the screen above the keyboard is short)
-  q.addEventListener("focus", () => setTimeout(() => q.scrollIntoView({ block: "center" }), 350));
   q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(); });
   q.addEventListener("input", () => checkQty(it));
   // "+ skid": set this skid aside (with its serial, if one was scanned) and clear the box for the next skid
