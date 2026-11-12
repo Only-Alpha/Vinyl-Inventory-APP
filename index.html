@@ -86,11 +86,6 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   background: var(--brand); color: var(--brand-ink); }
 .actions.compact .scanbtn.alt { background: var(--surface); color: var(--brand); border: 3px solid var(--brand); }
 .actions.compact .scanbtn svg { width: 30px; height: 30px; }
-/* Finish count bar, pinned to the bottom of the Inventory screen */
-.finishbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line);
-  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
-.finishbar button { width: 100%; max-width: 688px; display: block; margin: 0 auto; min-height: 56px; border: 0; border-radius: 12px;
-  background: var(--ok); color: #fff; font: 700 19px var(--font); }
 
 /* tabs */
 .tabs { display: flex; gap: 6px; padding-block: 8px; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 112px); background: var(--bg); z-index: 4; }
@@ -226,7 +221,6 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
   <section class="panel" id="panel-totals"></section>
   <section class="panel" id="panel-skids" hidden></section>
   <section class="panel" id="panel-setup" hidden></section>
-  <div class="finishbar" id="finishBar" hidden><button type="button" id="btnFinishBar">Finish count</button></div>
 </main>
 
 <!-- A non-image accept list makes Android open its document picker (with Google Drive in the side menu) instead of
@@ -239,7 +233,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-10.16";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-12.1";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -315,13 +309,6 @@ function render() {
   }
   $("noList").hidden = !!list;
   renderTotals(t); renderSkids(); renderSetup(); renderReceive();
-  updateFinishBar();
-}
-/* "Finish count" stays at the bottom of the Inventory screen once something is counted (not on Setup, which has its own) */
-function updateFinishBar() {
-  const n = count.entries.length, onSetup = $("tab-setup").getAttribute("aria-selected") === "true";
-  $("finishBar").hidden = !(mode === "count" && n > 0 && !onSetup);
-  $("btnFinishBar").textContent = `Finish count (${n} skid${n === 1 ? "" : "s"})`;
 }
 
 function renderTotals(t) {
@@ -367,8 +354,8 @@ function renderSetup() {
   const started = new Date(count.started).toLocaleDateString();
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
-      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Vinyl Count App Export.xlsx</b>). The PC then adds it to the Vinyl List and saves <b>${esc(fullDay())} Weekly Vinyl Count.xlsx</b> in the same format. A second count the same day is saved as <b>#2</b>; nothing gets replaced.</p>
-      <button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div>
+      <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Vinyl Count App Export.xlsx</b>). Within 5 minutes the PC saves <b>${esc(fullDay())} Weekly Vinyl Count.xlsx</b> with this week next to last week. Only finish once the whole count is done: a second count the same day is saved as <b>#2</b> and becomes the newest numbers.</p>
+      <div id="finishArea"><button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, sent by the PC ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
         ${driveUrl ? "It updates from Google Drive each time the app opens." : ""}</p>
@@ -1341,9 +1328,7 @@ function setMode(m) {
 /* ---------- wiring ---------- */
 function showTab(name) {
   for (const n of ["totals", "skids", "setup"]) { $("tab-" + n).setAttribute("aria-selected", n === name); $("panel-" + n).hidden = n !== name; }
-  updateFinishBar();
 }
-$("btnFinishBar").onclick = () => exportCount();
 for (const n of ["totals", "skids", "setup"]) $("tab-" + n).onclick = () => showTab(n);
 $("btnScan").onclick = () => startScan("label");
 $("btnMfr").onclick = () => startScan("mfr");
@@ -1392,7 +1377,13 @@ document.addEventListener("click", e => {
       if (r.ok) syncList(false).then(render);
     }).catch(err => { $("driveStatus").textContent = "Couldn't reach it (" + err.message + "). Most likely the deployment's \"Who has access\" is \"Anyone within Only Alpha\": it has to be \"Anyone\" (Deploy > Manage deployments > edit)."; });
   }
-  if (e.target.id === "btnExport") exportCount();
+  if (e.target.id === "btnExport") {
+    const n = count.entries.length, p = totals().size;
+    $("finishArea").innerHTML = `<div class="confirm"><b>Finish the count now? ${n} skid${n === 1 ? "" : "s"}, ${p} part#${p === 1 ? "" : "s"}. Only if everything is counted.</b>
+      <button class="btn" type="button" id="btnExportYes" style="border-color:var(--brand)">Yes, finish &amp; save</button><button class="btn" type="button" id="btnExportNo">Keep counting</button></div>`;
+  }
+  if (e.target.id === "btnExportNo") renderSetup();
+  if (e.target.id === "btnExportYes") { renderSetup(); exportCount(); }
   if (e.target.id === "btnNew") {
     $("newArea").innerHTML = `<div class="confirm"><b>Clear all ${count.entries.length} skids on this phone?</b>
       <button class="btn danger" type="button" id="btnNewYes">Yes, start over</button><button class="btn" type="button" id="btnNewNo">Keep counting</button></div>`;
