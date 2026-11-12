@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#16324f">
 <title>Vinyl Inventory</title>
 <link rel="manifest" href="manifest.json">
@@ -148,6 +148,10 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .warnline { margin: 10px 0 0; font-weight: 600; color: var(--warn); }
 .sheet .btn-row { grid-template-columns: 1fr 1fr; }
 .sheet .btn-row .big { min-height: 60px; }
+/* full screen (nothing from the screen behind shows at the top); Cancel / Save stay pinned at the bottom, just above the keyboard */
+.scrim > .sheet { height: 100%; max-height: none; max-width: none; border-radius: 0; display: flex; flex-direction: column; padding-top: calc(14px + env(safe-area-inset-top, 0px)); padding-bottom: 0; }
+.scrim > .sheet > .btn-row:last-child { position: sticky; bottom: 0; margin-top: auto; padding-block: 12px calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--surface); }
+.scrim > .sheet > * { flex: none; }
 .serial { font-size: 14px; color: var(--muted); margin-top: 8px; }
 
 /* camera */
@@ -237,7 +241,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-12.2";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-12.3";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -414,6 +418,8 @@ function openSheet(part) {
   document.body.appendChild(scrim);
   const q = $("qty");
   setTimeout(() => q.focus(), 50);
+  // once the keyboard is up, keep the amount box in view (the screen above the keyboard is short)
+  q.addEventListener("focus", () => setTimeout(() => q.scrollIntoView({ block: "center" }), 350));
   q.addEventListener("keydown", e => { if (e.key === "Enter") saveSkid(); });
   q.addEventListener("input", () => checkQty(it));
   // "+ skid": set this skid aside (with its serial, if one was scanned) and clear the box for the next skid
@@ -999,7 +1005,7 @@ function busy(msg) {
   if (!msg) { b?.remove(); return; }
   if (!b) {
     b = document.createElement("div"); b.className = "scrim"; b.id = "busy"; b.style.alignItems = "center";
-    b.innerHTML = `<div class="sheet" style="border-radius:16px;width:auto;max-width:90%;text-align:center"><p id="busyMsg" class="reading" style="justify-content:center;margin:8px"></p></div>`;
+    b.innerHTML = `<div class="sheet" style="border-radius:16px;width:auto;height:auto;max-width:90%;padding:18px;text-align:center"><p id="busyMsg" class="reading" style="justify-content:center;margin:8px"></p></div>`;
     document.body.appendChild(b);
   }
   $("busyMsg").textContent = msg;
