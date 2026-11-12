@@ -154,6 +154,30 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .scrim > .sheet > * { flex: none; }
 .scrim > .sheet > .sheetfoot { position: sticky; bottom: 0; margin-top: auto; padding-top: 6px; background: var(--surface); }
 .sheetfoot > .btn-row { padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+/* keyboard open (the page shrinks to the space above it): everything smaller, so the pattern, last week and
+   this week stay on screen above the amount box */
+@media (max-height: 520px) {
+  .scrim > .sheet { padding-top: 6px; }
+  .scrim > .sheet > div:first-child { display: none; }
+  .scrim > .sheet h2 { font-size: 22px; }
+  .scrim > .sheet .meta { margin: 0 0 4px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .compare { margin-bottom: 4px; gap: 6px; }
+  .compare div { padding: 3px 8px; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .compare small { font-size: 11px; }
+  .compare b { font-size: 20px; }
+  #weekNote { display: none !important; }
+  .loose { margin-top: 4px; padding: 4px 10px; }
+  .loose input { width: 20px; height: 20px; }
+  .sheetfoot .warnline { margin-top: 2px; font-size: 13px; }
+  .loose small, label[for="qty"] { display: none !important; }
+  .sheetfoot { padding-top: 2px !important; }
+  .sheetfoot .qtybtns { margin-top: 4px; gap: 8px; }
+  .sheetfoot .plus { min-height: 40px; font-size: 18px; }
+  .sheetfoot .qty { margin-top: 6px; }
+  .sheetfoot .qty input { font-size: 30px; padding: 6px 12px; }
+  .sheetfoot > .btn-row { margin-top: 6px; padding-bottom: 6px; }
+  .sheetfoot .big, .sheetfoot .big.primary { min-height: 46px; font-size: 19px; }
+}
 .serial { font-size: 14px; color: var(--muted); margin-top: 8px; }
 
 /* camera */
@@ -243,7 +267,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-12.4";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-12.5";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
