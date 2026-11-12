@@ -134,6 +134,10 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .qty .unit { font: 700 26px var(--num); color: var(--muted); width: 44px; }
 .qtybtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .plus { min-height: 56px; border: 2px solid var(--brand); border-radius: 12px; background: var(--surface); color: var(--brand); font: 700 22px var(--num); }
+.loose { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px; font-weight: 600; }
+.loose input { width: 26px; height: 26px; flex: none; accent-color: var(--brand); }
+.loose small { display: block; font-weight: 400; color: var(--muted); }
+.loose:has(input:checked) { border-color: var(--brand); }
 .skidlist { margin-top: 10px; display: grid; gap: 6px; }
 .skidlist .sk { display: flex; align-items: center; gap: 10px; background: var(--bg); border-radius: 10px; padding: 8px 10px; font-variant-numeric: tabular-nums; }
 .skidlist .sk span { flex: 1; min-width: 0; }
@@ -233,7 +237,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-12.1";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-12.2";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -264,10 +268,12 @@ function totals() {
   const t = new Map();
   for (const e of count.entries) {
     const r = t.get(e.part) || { qty: 0, skids: 0 };
-    r.qty += e.qty; r.skids += 1; t.set(e.part, r);
+    r.qty += e.qty; r.skids += e.loose ? 0 : 1; t.set(e.part, r);
   }
   return t;
 }
+/* skids on this phone: loose rolls (going back on another skid) count their yards but not as a skid */
+const skidCount = () => count.entries.filter(e => !e.loose).length;
 const fmt = n => n == null ? "–" : Math.round(n).toLocaleString("en-US");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -304,8 +310,8 @@ function render() {
     $("stSkids").textContent = received.entries.length;
     $("stLabel").textContent = (received.entries.length === 1 ? "skid" : "skids") + " received";
   } else {
-    $("stSkids").textContent = count.entries.length;
-    $("stLabel").textContent = (count.entries.length === 1 ? "skid" : "skids") + " · " + t.size + " part#s";
+    $("stSkids").textContent = skidCount();
+    $("stLabel").textContent = (skidCount() === 1 ? "skid" : "skids") + " · " + t.size + " part#s";
   }
   $("noList").hidden = !!list;
   renderTotals(t); renderSkids(); renderSetup(); renderReceive();
@@ -342,7 +348,7 @@ function renderSkids() {
     const time = new Date(e.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     return `<div class="row">
       <div><div class="name">${milBadge(it)} ${esc(it.name)}</div>
-        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}${e.rolls ? " · rolls " + e.rolls.map(fmt).join(" + ") : ""}</div></div>
+        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}${e.rolls ? " · rolls " + e.rolls.map(fmt).join(" + ") : ""}${e.loose ? " · <b>loose rolls, no skid</b>" : ""}</div></div>
       <div class="nums">${fmt(e.qty)} <small>${e.unit}</small>
         <button class="del" type="button" data-del="${e.id}">Remove</button></div>
     </div>`;
@@ -355,7 +361,7 @@ function renderSetup() {
   p.innerHTML = `
     <div class="note"><h3>Finish the count</h3>
       <p>Saves this count to Google Drive &gt; Inventory Files &gt; <b>Weekly Inventory Counts</b> (<b>${esc(fullDay())} Weekly Vinyl Count App Export.xlsx</b>). Within 5 minutes the PC saves <b>${esc(fullDay())} Weekly Vinyl Count.xlsx</b> with this week next to last week. Only finish once the whole count is done: a second count the same day is saved as <b>#2</b> and becomes the newest numbers.</p>
-      <div id="finishArea"><button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${count.entries.length} skids)</button></div></div>
+      <div id="finishArea"><button class="btn" type="button" id="btnExport" ${count.entries.length ? "" : "disabled"} style="border-color:var(--brand)">Finish &amp; save to Google Drive (${skidCount()} skids)</button></div></div>
     <div class="note"><h3>Material list</h3>
       <p>${list ? `<b>${list.items.length}</b> materials from <b>${esc(list.sheet)}</b>, sent by the PC ${esc(new Date(list.made).toLocaleString())}.` : "No list on this phone yet."}
         ${driveUrl ? "It updates from Google Drive each time the app opens." : ""}</p>
@@ -396,6 +402,7 @@ function openSheet(part) {
     <div class="qtybtns">
       <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll to this skid">+ roll</button>
       <button class="plus" type="button" id="skidPlus" aria-label="Set this skid aside and enter the next one">+ skid</button></div>
+    <label class="loose"><input type="checkbox" id="shLoose"><span>Loose rolls, not a skid<small>Rolls going back onto another skid: the amount counts, the skid doesn't.</small></span></label>
     <div class="qtysum" id="qtySum" hidden></div>
     <div class="skidlist" id="skidList" hidden></div>
     <div class="serial" id="shSerial" hidden></div>
@@ -516,13 +523,15 @@ function saveSkid() {
     w.hidden = false; w.textContent = "This vendor serial is already counted. Remove the other entry on the Skids tab if it's a mistake."; return;
   }
   const part = sheetPart, unit = info(part).unit || unitFor(part), now = new Date().toISOString();
+  const loose = !!$("shLoose")?.checked;
   for (const s of skids)       // each skid is its own entry, so skid counts stay right
     count.entries.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), part, qty: s.qty, unit,
                          rolls: s.rolls,     // the roll breakdown, to check the math later
-                         serial: s.serial || null, how: "scan", t: now });
+                         serial: s.serial || null, how: "scan", t: now, ...(loose ? { loose: true } : {}) });
   save(); closeSheet(); render();
   const sum = skids.reduce((a, s) => a + s.qty, 0);
-  toast(skids.length > 1 ? `Saved ${skids.length} skids · ${fmt(sum)} ${unit} · ${info(part).name}` : `Saved ${fmt(sum)} ${unit} · ${info(part).name}`);
+  if (loose) toast(`Saved ${fmt(sum)} ${unit} loose rolls (no skid) · ${info(part).name}`);
+  else toast(skids.length > 1 ? `Saved ${skids.length} skids · ${fmt(sum)} ${unit} · ${info(part).name}` : `Saved ${fmt(sum)} ${unit} · ${info(part).name}`);
   // back to the Inventory home screen (Totals), with the material just saved at the top
   showTab("totals"); window.scrollTo(0, 0);
 }
@@ -793,13 +802,13 @@ async function exportCount() {
                      now, it.last ?? null, now != null && it.last != null ? now - it.last : null, it.unit || unitFor(it.part),
                      r ? r.skids : 0, f ? f.text : ""]);
   }
-  const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Rolls", "Vendor serial"]];
-  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.rolls ? e.rolls.join(" + ") : "", e.serial || ""]);
+  const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Rolls", "Vendor serial", "Skid"]];
+  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.rolls ? e.rolls.join(" + ") : "", e.serial || "", e.loose ? "loose rolls, no skid" : ""]);
   // Inventory Files > Weekly Inventory Counts > "11-10-2026 Weekly Vinyl Count App Export.xlsx" (a 2nd count that day: "#2"): every skid, plus the
   // totals. The formatted "11-10-2026 Weekly Vinyl Count.xlsx" (the count tabs with CURRENT / LAST WEEK) is made by the PC
   // on the PC. The .json Finish Count reads stays in Inventory Files.
   await saveFiles(`${fullDay()} Weekly Vinyl Count App Export.xlsx`, `count-${isoDay()}.json`, out, [
-    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 22, 14] },
+    { name: "Skids", rows: skidRows, widths: [16, 26, 17, 9, 6, 22, 14, 20] },
     { name: "Totals", rows: totalsRows, widths: [11, 16, 26, 17, 9, 11, 11, 9, 6, 7, 22] }], "Weekly Inventory Counts");
 }
 
@@ -1378,14 +1387,14 @@ document.addEventListener("click", e => {
     }).catch(err => { $("driveStatus").textContent = "Couldn't reach it (" + err.message + "). Most likely the deployment's \"Who has access\" is \"Anyone within Only Alpha\": it has to be \"Anyone\" (Deploy > Manage deployments > edit)."; });
   }
   if (e.target.id === "btnExport") {
-    const n = count.entries.length, p = totals().size;
+    const n = skidCount(), p = totals().size;
     $("finishArea").innerHTML = `<div class="confirm"><b>Finish the count now? ${n} skid${n === 1 ? "" : "s"}, ${p} part#${p === 1 ? "" : "s"}. Only if everything is counted.</b>
       <button class="btn" type="button" id="btnExportYes" style="border-color:var(--brand)">Yes, finish &amp; save</button><button class="btn" type="button" id="btnExportNo">Keep counting</button></div>`;
   }
   if (e.target.id === "btnExportNo") renderSetup();
   if (e.target.id === "btnExportYes") { renderSetup(); exportCount(); }
   if (e.target.id === "btnNew") {
-    $("newArea").innerHTML = `<div class="confirm"><b>Clear all ${count.entries.length} skids on this phone?</b>
+    $("newArea").innerHTML = `<div class="confirm"><b>Clear all ${count.entries.length} entries on this phone?</b>
       <button class="btn danger" type="button" id="btnNewYes">Yes, start over</button><button class="btn" type="button" id="btnNewNo">Keep counting</button></div>`;
   }
   if (e.target.id === "btnNewNo") renderSetup();
