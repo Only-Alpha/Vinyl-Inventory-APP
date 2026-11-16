@@ -160,6 +160,8 @@ footer button { background: none; border: 0; color: var(--accent); font-size: 13
    address the office hands out: .../production/#s=<script id>. The link is kept on this phone after the first open.
    This page never sends anything anywhere except that one GET. */
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
+// or a box part# (B-4200422310T-LG) that is on the list
+const isPart = t => PART_RX.test(t) || (data?.items || []).some(i => i.part === t);
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -268,7 +270,7 @@ function show(part) {
       <dl class="facts">
         <dt>Part#</dt><dd>${esc(it.part)}</dd>
         ${it.vendor ? `<dt>2P#</dt><dd>${esc(it.vendor)}</dd>` : ""}
-        ${it.line ? `<dt>Printer</dt><dd>${it.line === "P4" ? "P4 (printer #4)" : it.line === "CSI" ? "CSI (old printer)" : esc(it.line)}</dd>` : ""}
+        ${it.line && it.line !== "Box" ? `<dt>Printer</dt><dd>${it.line === "P4" ? "P4 (printer #4)" : it.line === "CSI" ? "CSI (old printer)" : esc(it.line)}</dd>` : ""}
       </dl>
       <button class="close" type="button" data-close>Close</button>
     </div>`
@@ -298,6 +300,9 @@ const GROUPS = [
   { name: "Custom bead", test: i => i.kind === "Bead" && beadType(i) === "Custom" },
   { name: "Other bead", test: i => i.kind === "Bead" },
   { name: "Poly", test: i => i.kind === "Poly" },
+  { name: "Liner boxes", test: i => i.kind === "Box" && /liner box/i.test(i.name) && !/^aboveg/i.test(i.name) },
+  { name: "AboveG liner boxes", test: i => i.kind === "Box" && /^aboveg/i.test(i.name) },
+  { name: "Other boxes & supplies", test: i => i.kind === "Box" },
 ];
 function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
 function pickLabel(i) {
@@ -305,7 +310,7 @@ function pickLabel(i) {
   if (i.kind === "Poly") return `${i.name} · ${i.mil} mil`;
   return i.name;
 }
-const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : "Bead & poly";
+const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : i.line === "Box" ? "Boxes" : "Bead & poly";
 const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = store.get("stock.pick", { printer: "", group: "" });
 
@@ -332,7 +337,7 @@ function openPicker() {
     el.innerHTML = values.map(v => `<option value="${esc(v.value)}">${esc(v.label)}</option>`).join("");
     if (keep && values.some(v => v.value === keep)) el.value = keep;
   };
-  const printers = ["CSI", "P4", "Bead & poly"].filter(p => all.some(i => printerOf(i) === p));
+  const printers = ["CSI", "P4", "Bead & poly", "Boxes"].filter(p => all.some(i => printerOf(i) === p));
   opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
   const fillParts = () => {
     const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
@@ -380,7 +385,7 @@ async function startScan() {
 function stopScan() { clearTimeout(timer); timer = null; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $("cam")?.remove(); }
 function gotCode(raw) {
   const text = String(raw || "").trim().toUpperCase();
-  if (PART_RX.test(text)) { try { navigator.vibrate?.(60); } catch {} stopScan(); show(text); return true; }
+  if (isPart(text)) { try { navigator.vibrate?.(60); } catch {} stopScan(); show(text); return true; }
   camMsg("Read “" + text.slice(0, 30) + "”. Scan the ALPHA skid label's barcode.");
   return false;
 }
@@ -427,7 +432,7 @@ function toast(msg) {
 $("btnScan").onclick = startScan;
 $("btnPick").onclick = openPicker;
 $("find").addEventListener("input", render);
-$("find").addEventListener("keydown", e => { if (e.key === "Enter") { const t = e.target.value.trim().toUpperCase(); if (PART_RX.test(t)) show(t); else $("list").querySelector("[data-part]")?.click(); } });
+$("find").addEventListener("keydown", e => { if (e.key === "Enter") { const t = e.target.value.trim().toUpperCase(); if (isPart(t)) show(t); else $("list").querySelector("[data-part]")?.click(); } });
 $("fStock").onclick = () => { filter = "stock"; store.set("stock.filter", filter); render(); };
 $("fAll").onclick = () => { filter = "all"; store.set("stock.filter", filter); render(); };
 $("list").addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) show(b.dataset.part); });

@@ -268,8 +268,10 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-12.8";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-16.1";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
+/* a part# to count: vinyl / poly / bead by its pattern, or a box part# (B-4200422310T-LG) that's on the list */
+const isPart = t => PART_RX.test(t) || (/^[A-Z0-9]+(-[A-Z0-9]+)+$/.test(t) && /\d{4,}/.test(t) && items.has(t));
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
@@ -379,7 +381,7 @@ function renderSkids() {
     const time = new Date(e.t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     return `<div class="row">
       <div><div class="name">${milBadge(it)} ${esc(it.name)}</div>
-        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}${e.rolls ? " · rolls " + e.rolls.map(fmt).join(" + ") : ""}${e.loose ? " · <b>loose rolls, no skid</b>" : ""}</div></div>
+        <div class="sub">${esc(e.part)} · ${time}${e.serial ? " · serial " + esc(e.serial) : ""}${e.rolls ? " · rolls " + e.rolls.map(fmt).join(" + ") : ""}${e.loose ? " · <b>loose, no skid</b>" : ""}</div></div>
       <div class="nums">${fmt(e.qty)} <small>${e.unit}</small>
         <button class="del" type="button" data-del="${e.id}">Remove</button></div>
     </div>`;
@@ -428,7 +430,7 @@ function openSheet(part) {
       <div id="weekBox" data-saved="${t?.qty ?? 0}" data-skids="${t?.skids ?? 0}"><small>This week so far</small><b id="weekNow">${fmt(t?.qty ?? 0)}</b> ${unit}
         <small id="weekNote" style="display:block;text-transform:none;letter-spacing:0">${t ? t.skids + (t.skids === 1 ? " skid saved" : " skids saved") : "nothing saved yet"}</small></div>
     </div>
-    <label class="loose"><input type="checkbox" id="shLoose"><span>Loose rolls, not a skid<small>Rolls going back onto another skid: the amount counts, the skid doesn't.</small></span></label>
+    <label class="loose"><input type="checkbox" id="shLoose"><span>${unit === "ea" ? "Loose boxes" : "Loose rolls"}, not a skid<small>${unit === "ea" ? "Boxes" : "Rolls"} going back onto another skid: the amount counts, the skid doesn't.</small></span></label>
     <div class="skidlist" id="skidList" hidden></div>
     <div class="serial" id="shSerial" hidden></div>
     <!-- the amount sits at the bottom, right above Save and the keyboard -->
@@ -438,7 +440,7 @@ function openSheet(part) {
         <button class="plus" type="button" id="qtyPlus" aria-label="Add another roll to this skid">+ roll</button>
         <button class="plus" type="button" id="skidPlus" aria-label="Set this skid aside and enter the next one">+ skid</button></div>
       <div class="qtysum" id="qtySum" hidden></div>
-      <label for="qty" style="font-weight:600;display:block;margin-top:10px">${unit === "ft" ? "Feet" : "Yards"} on this skid</label>
+      <label for="qty" style="font-weight:600;display:block;margin-top:10px">${unit === "ft" ? "Feet" : unit === "ea" ? "Boxes" : "Yards"} on this skid</label>
       <div class="qty"><input id="qty" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="0"><span class="unit">${unit}</span></div>
       <div class="btn-row" style="grid-template-columns:1fr 2fr">
         <button class="big secondary" type="button" id="shCancel">Cancel</button>
@@ -563,7 +565,7 @@ function saveSkid() {
                          serial: s.serial || null, how: "scan", t: now, ...(loose ? { loose: true } : {}) });
   save(); closeSheet(); render();
   const sum = skids.reduce((a, s) => a + s.qty, 0);
-  if (loose) toast(`Saved ${fmt(sum)} ${unit} loose rolls (no skid) · ${info(part).name}`);
+  if (loose) toast(`Saved ${fmt(sum)} ${unit} loose (no skid) · ${info(part).name}`);
   else toast(skids.length > 1 ? `Saved ${skids.length} skids · ${fmt(sum)} ${unit} · ${info(part).name}` : `Saved ${fmt(sum)} ${unit} · ${info(part).name}`);
   // back to the Inventory home screen (Totals), with the material just saved at the top
   showTab("totals"); window.scrollTo(0, 0);
@@ -661,7 +663,7 @@ function loopZxing(v) {
 function handleCode(raw) {
   const text = String(raw || "").trim().toUpperCase();
   if (navigator.vibrate) try { navigator.vibrate(60); } catch {}
-  if (PART_RX.test(text)) {
+  if (isPart(text)) {
     if (camMode === "vendor") { camMsg("That's your skid label. Scan the Q barcode on the manufacturer's label."); return false; }
     stopScan(); openSheet(text); return true;
   }
@@ -712,7 +714,7 @@ function openFinder(typeMode, initial = "") {
     const s = q.value.trim().toLowerCase();
     const typed = q.value.trim().toUpperCase();
     let html = "";
-    if (PART_RX.test(typed)) html += `<button class="pick" type="button" data-part="${esc(typed)}"><span class="name">Use ${esc(typed)}</span><span></span></button>`;
+    if (isPart(typed)) html += `<button class="pick" type="button" data-part="${esc(typed)}"><span class="name">Use ${esc(typed)}</span><span></span></button>`;
     const hits = (list?.items || []).filter(i => !s || (i.name + " " + i.part + " " + (i.vendor || "")).toLowerCase().includes(s)).slice(0, 40);
     html += hits.map(i => `<button class="pick" type="button" data-part="${esc(i.part)}">
         <span class="name">${milBadge(i)} ${esc(i.name)} ${lineChip(i)}</span><span class="sub">last ${fmt(i.last)}</span>
@@ -720,7 +722,7 @@ function openFinder(typeMode, initial = "") {
     res.innerHTML = html || `<p class="empty">${list ? "No match." : "Load the list in Setup to search by pattern."}</p>`;
   };
   q.addEventListener("input", show);
-  q.addEventListener("keydown", e => { if (e.key === "Enter") { const t = q.value.trim().toUpperCase(); if (PART_RX.test(t)) { closeSheet(); openSheet(t); } } });
+  q.addEventListener("keydown", e => { if (e.key === "Enter") { const t = q.value.trim().toUpperCase(); if (isPart(t)) { closeSheet(); openSheet(t); } } });
   res.addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) { closeSheet(); openSheet(b.dataset.part); } });
   q.value = initial;
   show(); setTimeout(() => q.focus(), 50);
@@ -817,7 +819,7 @@ async function saveFiles(xlsxName, jsonName, obj, sheets, folder, jsonFolder) {
 }
 
 const GROUP_ORDER = n => { const i = GROUPS.findIndex(g => g.name === n); return i < 0 ? 99 : i; };
-const PRINTER_ORDER = { CSI: 0, P4: 1, "Bead & poly": 2 };
+const PRINTER_ORDER = { CSI: 0, P4: 1, "Bead & poly": 2, Boxes: 3 };
 async function exportCount() {
   const t = totals();
   const out = { app: "skid-count", version: 1, exported: new Date().toISOString(), started: count.started,
@@ -836,7 +838,7 @@ async function exportCount() {
                      r ? r.skids : 0, f ? f.text : ""]);
   }
   const skidRows = [["Time", "Pattern", "Part#", "Amount", "Unit", "Rolls", "Vendor serial", "Skid"]];
-  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.rolls ? e.rolls.join(" + ") : "", e.serial || "", e.loose ? "loose rolls, no skid" : ""]);
+  for (const e of count.entries) skidRows.push([timeOf(e.t), info(e.part).name, e.part, e.qty, e.unit, e.rolls ? e.rolls.join(" + ") : "", e.serial || "", e.loose ? "loose, no skid" : ""]);
   // Inventory Files > Weekly Inventory Counts > "11-10-2026 Weekly Vinyl Count App Export.xlsx" (a 2nd count that day: "#2"): every skid, plus the
   // totals. The formatted "11-10-2026 Weekly Vinyl Count.xlsx" (the count tabs with CURRENT / LAST WEEK) is made by the PC
   // on the PC. The .json Finish Count reads stays in Inventory Files.
@@ -1056,6 +1058,10 @@ const GROUPS = [
   { name: "Custom bead", test: i => i.kind === "Bead" && beadType(i) === "Custom" },
   { name: "Other bead", test: i => i.kind === "Bead" },
   { name: "Poly", test: i => i.kind === "Poly" },
+  // boxes (Boxes tab): in-ground liner boxes, AboveG liner boxes, then gaylords / tape
+  { name: "Liner boxes", test: i => i.kind === "Box" && /liner box/i.test(i.name) && !/^aboveg/i.test(i.name) },
+  { name: "AboveG liner boxes", test: i => i.kind === "Box" && /^aboveg/i.test(i.name) },
+  { name: "Other boxes & supplies", test: i => i.kind === "Box" },
 ];
 function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
 /* what the Pattern dropdown shows: bead by color only ("Dark Blue"), poly with its mil */
@@ -1064,7 +1070,7 @@ function pickLabel(i) {
   if (i.kind === "Poly") return `${i.name} · ${i.mil} mil`;
   return i.name;
 }
-const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : "Bead & poly";
+const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : i.line === "Box" ? "Boxes" : "Bead & poly";
 const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = { printer: "", group: "" };
 
@@ -1099,7 +1105,7 @@ function openPicker(onPick) {
     el.innerHTML = values.map(v => `<option value="${esc(v.value)}">${esc(v.label)}</option>`).join("");
     if (keep && values.some(v => v.value === keep)) el.value = keep;
   };
-  const printers = ["CSI", "P4", "Bead & poly"].filter(p => all.some(i => printerOf(i) === p));
+  const printers = ["CSI", "P4", "Bead & poly", "Boxes"].filter(p => all.some(i => printerOf(i) === p));
   opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
   const fillGroups = keep => {
     const names = [...GROUPS.map(g => g.name), "Other"].filter(n => all.some(i => printerOf(i) === P.value && groupOf(i) === n));
