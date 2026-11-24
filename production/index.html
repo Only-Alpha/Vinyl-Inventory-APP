@@ -303,6 +303,22 @@ const GROUPS = [
   { name: "All boxes", test: i => i.kind === "Box" },
 ];
 function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
+/* box order on the dropdown: AG x-small, AG small, AG medium, large liner boxes (top then bottom each),
+   gaylord, tape, anything else, then the discontinued boxes (by size, top then bottom) */
+function boxRank(i) {
+  if (i.kind !== "Box") return 0;
+  const n = i.name || "";
+  if (/discontinued/i.test(n)) return 8;
+  if (/^(aboveg|ag)\b/i.test(n)) return /x-small/i.test(n) ? 1 : /small/i.test(n) ? 2 : /medium/i.test(n) ? 3 : 4;
+  if (/large/i.test(n)) return 5;
+  if (/gaylord/i.test(n)) return 6;
+  if (/tape/i.test(n)) return 7;
+  return 7.5;
+}
+const boxBase = i => (i.name || "").replace(/\s+(top|bottom)\b/i, "");
+const boxSide = i => /\bbottom\b/i.test(i.name || "") ? 1 : 0;
+const pickOrder = (a, b) => boxRank(a) - boxRank(b) || (a.kind === "Box" ? boxBase(a).localeCompare(boxBase(b)) || boxSide(a) - boxSide(b) : 0)
+  || pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part);
 function pickLabel(i) {
   if (i.kind === "Bead") return i.name.replace(/\s*Bead\s*\([^)]*\)\s*$/, "");
   if (i.kind === "Poly") return `${i.name} · ${i.mil} mil`;
@@ -339,7 +355,7 @@ function openPicker() {
   opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
   const fillParts = () => {
     const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
-      .sort((a, b) => pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part));
+      .sort(pickOrder);
     // AG groups mix walls and floors
     const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
     opts(T, hits.map(i => ({ value: i.part, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (has(i) ? ` (${fmt(i.qty)} ${i.unit || "yd"}${skidText(i) ? ", " + skidText(i) : ""})` : "") })));

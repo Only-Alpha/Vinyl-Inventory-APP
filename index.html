@@ -268,7 +268,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-24.1";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-24.2";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 /* a part# to count: vinyl / poly / bead by its pattern, or a box part# (B-4200422310T-LG) that's on the list */
 const isPart = t => PART_RX.test(t) || (/^[A-Z0-9]+(-[A-Z0-9]+)+$/.test(t) && /\d{4,}/.test(t) && items.has(t));
@@ -1062,6 +1062,22 @@ const GROUPS = [
   { name: "All boxes", test: i => i.kind === "Box" },
 ];
 function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
+/* box order on the dropdown: AG x-small, AG small, AG medium, large liner boxes (top then bottom each),
+   gaylord, tape, anything else, then the discontinued boxes (by size, top then bottom) */
+function boxRank(i) {
+  if (i.kind !== "Box") return 0;
+  const n = i.name || "";
+  if (/discontinued/i.test(n)) return 8;
+  if (/^(aboveg|ag)\b/i.test(n)) return /x-small/i.test(n) ? 1 : /small/i.test(n) ? 2 : /medium/i.test(n) ? 3 : 4;
+  if (/large/i.test(n)) return 5;
+  if (/gaylord/i.test(n)) return 6;
+  if (/tape/i.test(n)) return 7;
+  return 7.5;
+}
+const boxBase = i => (i.name || "").replace(/\s+(top|bottom)\b/i, "");
+const boxSide = i => /\bbottom\b/i.test(i.name || "") ? 1 : 0;
+const pickOrder = (a, b) => boxRank(a) - boxRank(b) || (a.kind === "Box" ? boxBase(a).localeCompare(boxBase(b)) || boxSide(a) - boxSide(b) : 0)
+  || pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part);
 /* what the Pattern dropdown shows: bead by color only ("Dark Blue"), poly with its mil */
 function pickLabel(i) {
   if (i.kind === "Bead") return i.name.replace(/\s*Bead\s*\([^)]*\)\s*$/, "");
@@ -1112,7 +1128,7 @@ function openPicker(onPick) {
   };
   const fillParts = () => {
     const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
-      .sort((a, b) => pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part));
+      .sort(pickOrder);
     // AG groups mix walls and floors (bead and poly don't need it)
     const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
     opts(T, hits.map(i => ({ value: i.part, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (i.last ? ` (last ${fmt(i.last)})` : "") })));
