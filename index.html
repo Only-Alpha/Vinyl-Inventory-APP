@@ -268,7 +268,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-16.1";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-24.1";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 /* a part# to count: vinyl / poly / bead by its pattern, or a box part# (B-4200422310T-LG) that's on the list */
 const isPart = t => PART_RX.test(t) || (/^[A-Z0-9]+(-[A-Z0-9]+)+$/.test(t) && /\d{4,}/.test(t) && items.has(t));
@@ -1058,10 +1058,8 @@ const GROUPS = [
   { name: "Custom bead", test: i => i.kind === "Bead" && beadType(i) === "Custom" },
   { name: "Other bead", test: i => i.kind === "Bead" },
   { name: "Poly", test: i => i.kind === "Poly" },
-  // boxes (Boxes tab): in-ground liner boxes, AboveG liner boxes, then gaylords / tape
-  { name: "Liner boxes", test: i => i.kind === "Box" && /liner box/i.test(i.name) && !/^aboveg/i.test(i.name) },
-  { name: "AboveG liner boxes", test: i => i.kind === "Box" && /^aboveg/i.test(i.name) },
-  { name: "Other boxes & supplies", test: i => i.kind === "Box" },
+  // boxes (Boxes tab): all in one list
+  { name: "All boxes", test: i => i.kind === "Box" },
 ];
 function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
 /* what the Pattern dropdown shows: bead by color only ("Dark Blue"), poly with its mil */

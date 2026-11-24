@@ -300,9 +300,7 @@ const GROUPS = [
   { name: "Custom bead", test: i => i.kind === "Bead" && beadType(i) === "Custom" },
   { name: "Other bead", test: i => i.kind === "Bead" },
   { name: "Poly", test: i => i.kind === "Poly" },
-  { name: "Liner boxes", test: i => i.kind === "Box" && /liner box/i.test(i.name) && !/^aboveg/i.test(i.name) },
-  { name: "AboveG liner boxes", test: i => i.kind === "Box" && /^aboveg/i.test(i.name) },
-  { name: "Other boxes & supplies", test: i => i.kind === "Box" },
+  { name: "All boxes", test: i => i.kind === "Box" },
 ];
 function beadType(i) { const m = (i.name || "").match(/\(([^)]+)\)\s*$/); return m ? m[1] : ""; }
 function pickLabel(i) {
