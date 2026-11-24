@@ -63,6 +63,17 @@ header .asof b { display: block; font: 700 20px/1 var(--num); }
 .swrow { display: flex; gap: 8px; align-items: center; }
 .swrow select { flex: 1; min-width: 0; }
 .sw { flex: none; width: 46px; height: 46px; border-radius: 8px; border: 2px solid var(--ink); }
+.swrow { position: relative; }
+/* tapping a colored dropdown opens the app's own list (every option with its exact label color), not the phone's */
+.selcover { position: absolute; inset: 0; width: 100%; background: transparent; border: 0; padding: 0; cursor: pointer; }
+.choose { position: fixed; inset: 0; z-index: 40; background: var(--surface); display: flex; flex-direction: column;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.choose h3 { margin: 4px 0 10px; font-size: 20px; }
+.choose .list { flex: 1; overflow-y: auto; display: grid; gap: 8px; align-content: start; }
+.choose .opt { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: 600 18px var(--font); text-align: left; }
+.choose .opt.on { border-color: var(--ink); }
+.choose .opt .sw { width: 34px; height: 34px; }
+.choose .cancel { margin-top: 10px; min-height: 52px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: 700 18px var(--font); }
 .pk select { width: 100%; font: 600 19px var(--font); padding: 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
 .pkbtns { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
 .pkbtns .btn2 { margin-top: 0; }
@@ -295,6 +306,7 @@ const GROUPS = [
   { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
   { name: "28 mil floor", test: i => i.mil === "28" && i.height === "72" },
   { name: "Textured", test: i => i.kind === "Textured" },
+  { name: "Doughboy", test: i => isDoughboy(i) },
   { name: "49″ 20 mil wall", test: i => i.mil === "20" && i.height === "49" },
   { name: "AG 17/13 mil", test: i => (i.mil === "17" && i.height === "47.5") || (i.mil === "13" && i.height === "72") },
   { name: "AG 13/11 mil", test: i => (i.mil === "13" && i.height === "47.5") || (i.mil === "11" && i.height === "72") },
@@ -337,6 +349,7 @@ function swatch(of) {
   if (/^28 mil/.test(of)) return SW.o;
   if (/^AG /.test(of)) return SW.m;
   if (of === "Textured") return SW.w;
+  if (of === "Doughboy") return SW.y;
   return null;
 }
 /* the closed dropdown takes the color of what's picked */
@@ -346,13 +359,36 @@ function paint(el) {
   const box = document.getElementById(el.id + "Sw"), c = o?.dataset.box || "";
   if (box) { box.hidden = !c; box.style.background = c; }
 }
+/* the app's own option list for a colored dropdown: every option with its exact label color beside it
+   (a phone's built-in list can't show the colors). Picking one sets the dropdown as if it was picked there. */
+function chooser(sel) {
+  const title = (sel.closest("label")?.firstChild?.textContent || "").trim();
+  const box = document.createElement("div");
+  box.className = "choose"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+  box.innerHTML = `<h3>${esc(title)}</h3><div class="list">` + [...sel.options].map((o, k) =>
+      `<button type="button" class="opt${k === sel.selectedIndex ? " on" : ""}" data-k="${k}"><span class="sw" style="${o.dataset.box ? "background:" + o.dataset.box : "visibility:hidden"}"></span><span>${esc(o.text)}</span></button>`).join("")
+    + `</div><button type="button" class="cancel" data-k="-1">Cancel</button>`;
+  document.body.appendChild(box);
+  box.querySelector(".on")?.scrollIntoView({ block: "center" });
+  box.addEventListener("click", e => {
+    const b = e.target.closest("[data-k]");
+    if (!b) return;
+    const k = +b.dataset.k;
+    box.remove();
+    if (k >= 0 && k !== sel.selectedIndex) { sel.selectedIndex = k; sel.dispatchEvent(new Event("change")); }
+  });
+}
+document.addEventListener("click", e => { const c = e.target.closest(".selcover"); if (c) chooser(document.getElementById(c.dataset.for)); });
 function pickLabel(i) {
+  if (isDoughboy(i)) return i.name.replace(/\s*\(doughboy\)/i, "");
   if (i.kind === "Bead") return i.name.replace(/\s*Bead\s*\([^)]*\)\s*$/, "");
   if (i.kind === "Poly") return `${i.name} · ${i.mil} mil`;
   return i.name;
 }
 const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : i.line === "Box" ? "Boxes" : "Bead & poly";
-const groupOf = i => (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
+/* doughboy material is its own Type whatever its mil / height (the PC names it "Evening Star (Doughboy)") */
+const isDoughboy = i => /\(doughboy\)/i.test(i.name || "");
+const groupOf = i => isDoughboy(i) ? "Doughboy" : (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = store.get("stock.pick", { printer: "", group: "" });
 
 function openPicker() {
@@ -365,8 +401,8 @@ function openPicker() {
     <h2 id="pkTitle">Manual Search</h2>
     <div class="pk">
       <label>Printer<select id="pkPrinter"></select></label>
-      <label>Type<span class="swrow"><select id="pkGroup"></select><span class="sw" id="pkGroupSw" hidden></span></span></label>
-      <label>Pattern<span class="swrow"><select id="pkPart"></select><span class="sw" id="pkPartSw" hidden></span></span></label>
+      <label>Type<span class="swrow"><select id="pkGroup"></select><span class="sw" id="pkGroupSw" hidden></span><button type="button" class="selcover" data-for="pkGroup" aria-label="Pick the type"></button></span></label>
+      <label>Pattern<span class="swrow"><select id="pkPart"></select><span class="sw" id="pkPartSw" hidden></span><button type="button" class="selcover" data-for="pkPart" aria-label="Pick the pattern"></button></span></label>
     </div>
     <div class="pkbtns">
       <button class="close" type="button" data-close>Cancel</button>
