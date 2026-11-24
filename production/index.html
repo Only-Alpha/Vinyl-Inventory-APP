@@ -73,6 +73,9 @@ header .asof b { display: block; font: 700 20px/1 var(--num); }
 .choose .opt { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: 600 18px var(--font); text-align: left; }
 .choose .opt.on { border-color: var(--ink); }
 .choose .opt .sw { width: 34px; height: 34px; }
+/* pattern photos (../thumbs/, made on the PC and published with the counting app) */
+.choose .opt .th { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); flex: none; background: #fff; }
+.dphoto { float: right; width: 88px; height: 88px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); margin-left: 10px; background: #fff; }
 .choose .cancel { margin-top: 10px; min-height: 52px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: 700 18px var(--font); }
 .pk select { width: 100%; font: 600 19px var(--font); padding: 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
 .pkbtns { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
@@ -274,7 +277,7 @@ function show(part) {
   const scrim = document.createElement("div");
   scrim.className = "scrim"; scrim.id = "scrim";
   scrim.innerHTML = it ? `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dTitle">
-      <h2 id="dTitle">${esc(it.name)}</h2>
+      ${photoOf(it) ? `<img class="dphoto" src="${esc(photoOf(it))}" alt="">` : ""}<h2 id="dTitle">${esc(it.name)}</h2>
       <p class="meta">${milBadge(it)} ${lineChip(it)} ${esc(desc(it))}</p>
       <div class="bigqty ${has(it) ? "" : "none"}">
         <small>At the last count${data.asOf ? " · " + esc(asOfText(data.asOf)) : ""}</small>
@@ -357,7 +360,8 @@ function paint(el) {
   const o = el.options[el.selectedIndex], bg = o?.dataset.bg || "";
   el.style.background = bg; el.style.color = bg ? "#222" : "";
   const box = document.getElementById(el.id + "Sw"), c = o?.dataset.box || "";
-  if (box) { box.hidden = !c; box.style.background = c; }
+  const img = o?.dataset.img || "";
+  if (box) { box.hidden = !c && !img; box.style.background = img ? `#fff center / cover url("${img}")` : c; }
 }
 /* the app's own option list for a colored dropdown: every option with its exact label color beside it
    (a phone's built-in list can't show the colors). Picking one sets the dropdown as if it was picked there. */
@@ -366,7 +370,7 @@ function chooser(sel) {
   const box = document.createElement("div");
   box.className = "choose"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
   box.innerHTML = `<h3>${esc(title)}</h3><div class="list">` + [...sel.options].map((o, k) =>
-      `<button type="button" class="opt${k === sel.selectedIndex ? " on" : ""}" data-k="${k}"><span class="sw" style="${o.dataset.box ? "background:" + o.dataset.box : "visibility:hidden"}"></span><span>${esc(o.text)}</span></button>`).join("")
+      `<button type="button" class="opt${k === sel.selectedIndex ? " on" : ""}" data-k="${k}">${o.dataset.img ? `<img class="th" src="${o.dataset.img}" alt="" loading="lazy">` : `<span class="sw" style="${o.dataset.box ? "background:" + o.dataset.box : "visibility:hidden"}"></span>`}<span>${esc(o.text)}</span></button>`).join("")
     + `</div><button type="button" class="cancel" data-k="-1">Cancel</button>`;
   document.body.appendChild(box);
   box.querySelector(".on")?.scrollIntoView({ block: "center" });
@@ -388,6 +392,15 @@ function pickLabel(i) {
 const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : i.line === "Box" ? "Boxes" : "Bead & poly";
 /* doughboy material is its own Type whatever its mil / height (the PC names it "Evening Star (Doughboy)") */
 const isDoughboy = i => /\(doughboy\)/i.test(i.name || "");
+/* pattern photo for a vinyl item ("Evening Star (Doughboy)" uses Evening Star's), null for bead / poly / boxes */
+const THUMB_DIR = "../thumbs/";
+let THUMBS = {};
+fetch(THUMB_DIR + "index.json").then(r => r.ok ? r.json() : {}).then(j => { THUMBS = j || {}; }).catch(() => {});
+function photoOf(i) {
+  if (!i || ["Box", "Bead", "Poly"].includes(i.kind)) return null;
+  const f = THUMBS[(i.name || "").replace(/\s*\(doughboy\)/i, "")];
+  return f ? THUMB_DIR + f : null;
+}
 const groupOf = i => isDoughboy(i) ? "Doughboy" : (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = store.get("stock.pick", { printer: "", group: "" });
 
@@ -412,7 +425,7 @@ function openPicker() {
   const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
   const opts = (el, values, keep) => {
     el.innerHTML = values.map(v => { const s = swatch(v.swatchOf);
-      return `<option value="${esc(v.value)}"${s ? ` data-bg="${s.bg}" data-box="${s.box || s.bg}"` : ""}${s?.bg ? ` style="background:${s.bg};color:#222"` : ""}>${esc(v.label)}</option>`; }).join("");
+      return `<option value="${esc(v.value)}"${v.img ? ` data-img="${esc(v.img)}"` : ""}${s ? ` data-bg="${s.bg}" data-box="${s.box || s.bg}"` : ""}${s?.bg ? ` style="background:${s.bg};color:#222"` : ""}>${esc(v.label)}</option>`; }).join("");
     if (keep && values.some(v => v.value === keep)) el.value = keep;
     paint(el);
   };
@@ -423,7 +436,7 @@ function openPicker() {
       .sort(pickOrder);
     // AG groups mix walls and floors
     const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
-    opts(T, hits.map(i => ({ value: i.part, swatchOf: i.kind === "Box" ? i : null, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (has(i) ? ` (${fmt(i.qty)} ${i.unit || "yd"}${skidText(i) ? ", " + skidText(i) : ""})` : "") })));
+    opts(T, hits.map(i => ({ value: i.part, swatchOf: i.kind === "Box" ? i : null, img: photoOf(i), label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (has(i) ? ` (${fmt(i.qty)} ${i.unit || "yd"}${skidText(i) ? ", " + skidText(i) : ""})` : "") })));
   };
   const fillGroups = keep => {
     const names = [...GROUPS.map(g => g.name), "Other"].filter(n => all.some(i => printerOf(i) === P.value && groupOf(i) === n));

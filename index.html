@@ -131,6 +131,13 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
 .choose .opt { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 6px 12px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: 600 18px var(--font); text-align: left; }
 .choose .opt.on { border-color: var(--ink); }
 .choose .opt .sw { width: 34px; height: 34px; }
+/* pattern photos (thumbs/ next to the app, made on the PC): in the Pattern list, beside the dropdown, on the amount screen */
+.choose .opt .th { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); flex: none; background: #fff; }
+.sheet.hasphoto { position: relative; }
+.shphoto { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  width: 72px; height: 72px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
+.hasphoto > div:first-child, .hasphoto > h2, .hasphoto > .meta { margin-right: 84px; }
+@media (max-height: 520px) { .shphoto { top: 6px; width: 46px; height: 46px; } .hasphoto > h2, .hasphoto > .meta { margin-right: 56px; } }
 .choose .cancel { margin-top: 10px; min-height: 52px; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: 700 18px var(--font); }
 .search { width: 100%; padding: 14px; border-radius: 10px; border: 2px solid var(--line); background: var(--surface); font-size: 18px; }
 .pick { width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 12px 2px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
@@ -283,7 +290,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-24.7";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-24.8";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 /* a part# to count: vinyl / poly / bead by its pattern, or a box part# (B-4200422310T-LG) that's on the list */
 const isPart = t => PART_RX.test(t) || (/^[A-Z0-9]+(-[A-Z0-9]+)+$/.test(t) && /\d{4,}/.test(t) && items.has(t));
@@ -436,9 +443,9 @@ function openSheet(part) {
   const unit = it.unit || unitFor(part);
   const scrim = document.createElement("div");
   scrim.className = "scrim"; scrim.id = "scrim";
-  scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shName">
+  scrim.innerHTML = `<div class="sheet${photoOf(it) ? " hasphoto" : ""}" role="dialog" aria-modal="true" aria-labelledby="shName">
     <div>${milBadge(it)} ${lineChip(it)}</div>
-    <h2 id="shName">${esc(it.name)}</h2>
+    ${photoOf(it) ? `<img class="shphoto" src="${esc(photoOf(it))}" alt="">` : ""}<h2 id="shName">${esc(it.name)}</h2>
     <div class="meta">${esc(part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}</div>
     <div class="compare">
       <div><small>Last week</small><b>${fmt(it.last)}</b> ${unit}</div>
@@ -1116,7 +1123,8 @@ function paint(el) {
   const o = el.options[el.selectedIndex], bg = o?.dataset.bg || "";
   el.style.background = bg; el.style.color = bg ? "#222" : "";
   const box = document.getElementById(el.id + "Sw"), c = o?.dataset.box || "";
-  if (box) { box.hidden = !c; box.style.background = c; }
+  const img = o?.dataset.img || "";
+  if (box) { box.hidden = !c && !img; box.style.background = img ? `#fff center / cover url("${img}")` : c; }
 }
 /* the app's own option list for a colored dropdown: every option with its exact label color beside it
    (a phone's built-in list can't show the colors). Picking one sets the dropdown as if it was picked there. */
@@ -1125,7 +1133,7 @@ function chooser(sel) {
   const box = document.createElement("div");
   box.className = "choose"; box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
   box.innerHTML = `<h3>${esc(title)}</h3><div class="list">` + [...sel.options].map((o, k) =>
-      `<button type="button" class="opt${k === sel.selectedIndex ? " on" : ""}" data-k="${k}"><span class="sw" style="${o.dataset.box ? "background:" + o.dataset.box : "visibility:hidden"}"></span><span>${esc(o.text)}</span></button>`).join("")
+      `<button type="button" class="opt${k === sel.selectedIndex ? " on" : ""}" data-k="${k}">${o.dataset.img ? `<img class="th" src="${o.dataset.img}" alt="" loading="lazy">` : `<span class="sw" style="${o.dataset.box ? "background:" + o.dataset.box : "visibility:hidden"}"></span>`}<span>${esc(o.text)}</span></button>`).join("")
     + `</div><button type="button" class="cancel" data-k="-1">Cancel</button>`;
   document.body.appendChild(box);
   box.querySelector(".on")?.scrollIntoView({ block: "center" });
@@ -1148,6 +1156,15 @@ function pickLabel(i) {
 const printerOf = i => i.line === "P4" ? "P4" : i.line === "CSI" ? "CSI" : i.line === "Box" ? "Boxes" : "Bead & poly";
 /* doughboy material is its own Type whatever its mil / height (the PC names it "Evening Star (Doughboy)") */
 const isDoughboy = i => /\(doughboy\)/i.test(i.name || "");
+/* pattern photo for a vinyl item ("Evening Star (Doughboy)" uses Evening Star's), null for bead / poly / boxes */
+const THUMB_DIR = "thumbs/";
+let THUMBS = {};
+fetch(THUMB_DIR + "index.json").then(r => r.ok ? r.json() : {}).then(j => { THUMBS = j || {}; }).catch(() => {});
+function photoOf(i) {
+  if (!i || ["Box", "Bead", "Poly"].includes(i.kind)) return null;
+  const f = THUMBS[(i.name || "").replace(/\s*\(doughboy\)/i, "")];
+  return f ? THUMB_DIR + f : null;
+}
 const groupOf = i => isDoughboy(i) ? "Doughboy" : (GROUPS.find(g => g.test(i)) || { name: "Other" }).name;
 let pickMemory = { printer: "", group: "" };
 
@@ -1180,7 +1197,7 @@ function openPicker(onPick) {
   const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
   const opts = (el, values, keep) => {
     el.innerHTML = values.map(v => { const s = swatch(v.swatchOf);
-      return `<option value="${esc(v.value)}"${s ? ` data-bg="${s.bg}" data-box="${s.box || s.bg}"` : ""}${s?.bg ? ` style="background:${s.bg};color:#222"` : ""}>${esc(v.label)}</option>`; }).join("");
+      return `<option value="${esc(v.value)}"${v.img ? ` data-img="${esc(v.img)}"` : ""}${s ? ` data-bg="${s.bg}" data-box="${s.box || s.bg}"` : ""}${s?.bg ? ` style="background:${s.bg};color:#222"` : ""}>${esc(v.label)}</option>`; }).join("");
     if (keep && values.some(v => v.value === keep)) el.value = keep;
     paint(el);
   };
@@ -1196,7 +1213,7 @@ function openPicker(onPick) {
       .sort(pickOrder);
     // AG groups mix walls and floors (bead and poly don't need it)
     const mixed = hits.some(i => i.kind === "Wall" || i.kind === "Floor") && new Set(hits.map(i => i.mil + i.height)).size > 1;
-    opts(T, hits.map(i => ({ value: i.part, swatchOf: i.kind === "Box" ? i : null, label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (i.last ? ` (last ${fmt(i.last)})` : "") })));
+    opts(T, hits.map(i => ({ value: i.part, swatchOf: i.kind === "Box" ? i : null, img: photoOf(i), label: pickLabel(i) + (mixed ? ` · ${i.mil} mil ${i.kind === "Floor" ? "floor" : "wall"}` : "") + (i.last ? ` (last ${fmt(i.last)})` : "") })));
     showInfo();
   };
   const showInfo = () => { const it = items.get(T.value); $("pkInfo").innerHTML = it ? `${milBadge(it)} ${esc(it.part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}` : ""; };
