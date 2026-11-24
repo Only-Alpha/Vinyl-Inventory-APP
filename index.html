@@ -268,7 +268,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-24.2";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-24.3";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 /* a part# to count: vinyl / poly / bead by its pattern, or a box part# (B-4200422310T-LG) that's on the list */
 const isPart = t => PART_RX.test(t) || (/^[A-Z0-9]+(-[A-Z0-9]+)+$/.test(t) && /\d{4,}/.test(t) && items.has(t));
@@ -1042,10 +1042,10 @@ function busy(msg) {
 
 /* ---- Manual Entry: Printer (CSI / P4 / Bead & poly) -> type -> pattern ---- */
 const GROUPS = [
-  // order on the Type dropdown: walls, floors, textured, 49" wall, AG, other
+  // order on the Type dropdown: 20 wall, 20 floor, 28 wall, 28 floor, textured, 49" wall, AG, other
   { name: "20 mil wall", test: i => i.mil === "20" && i.height === "39" },
-  { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
   { name: "20 mil floor", test: i => i.mil === "20" && i.height === "72" },
+  { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
   { name: "28 mil floor", test: i => i.mil === "28" && i.height === "72" },
   { name: "Textured", test: i => i.kind === "Textured" },
   { name: "49″ 20 mil wall", test: i => i.mil === "20" && i.height === "49" },

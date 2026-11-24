@@ -287,8 +287,8 @@ function closeSheet() { $("scrim")?.remove(); }
 /* ---- Manual Search: Printer > Type > Pattern dropdowns (same order as the Vinyl Inventory app) ---- */
 const GROUPS = [
   { name: "20 mil wall", test: i => i.mil === "20" && i.height === "39" },
-  { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
   { name: "20 mil floor", test: i => i.mil === "20" && i.height === "72" },
+  { name: "28 mil wall", test: i => i.mil === "28" && i.height === "39" },
   { name: "28 mil floor", test: i => i.mil === "28" && i.height === "72" },
   { name: "Textured", test: i => i.kind === "Textured" },
   { name: "49″ 20 mil wall", test: i => i.mil === "20" && i.height === "49" },
