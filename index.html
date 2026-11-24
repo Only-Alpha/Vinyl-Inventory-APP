@@ -290,7 +290,7 @@ header .stat b { font: 700 22px/1 var(--num); display: block; font-variant-numer
    list  = { sheet, made, items: [{ part, name, vendor, line, mil, height, kind, unit, last }] }  (made by Skid Label Generator)
    count = { started, entries: [{ id, part, qty, unit, serial, how, t }] }                        (kept on this phone)
 */
-const APP_VERSION = "2026-11-24.8";   // bump on every publish: the app compares it with the live copy to offer an update
+const APP_VERSION = "2026-11-24.9";   // bump on every publish: the app compares it with the live copy to offer an update
 const PART_RX = /^(12\d{2}-\d{2}-\d{2,3}-\d{4}|1301-\d{2}-\d{2}-\d{4}|1[23]03-\d{4})$/;
 /* a part# to count: vinyl / poly / bead by its pattern, or a box part# (B-4200422310T-LG) that's on the list */
 const isPart = t => PART_RX.test(t) || (/^[A-Z0-9]+(-[A-Z0-9]+)+$/.test(t) && /\d{4,}/.test(t) && items.has(t));
@@ -1104,7 +1104,7 @@ const pickOrder = (a, b) => boxRank(a) - boxRank(b) || (a.kind === "Box" ? boxBa
 /* the skid label's colors on the dropdowns: Type by mil (20 yellow, 28 orange, AG 11/13/17 mint, textured white),
    boxes by their size strip (X-small orange, small yellow, medium mint, large lavender).
    The exact color: a box beside the dropdown and the closed dropdown itself (and the open list where the phone allows it). */
-const SW = { y: { bg: "#ffff31" }, o: { bg: "#ff8056" }, m: { bg: "#a0ffd1" }, l: { bg: "#d2b4ff" }, w: { bg: "", box: "#ffffff" } };
+const SW = { y: { bg: "#ffff31" }, o: { bg: "#ff8056" }, m: { bg: "#a0ffd1" }, l: { bg: "#d2b4ff" }, g: { bg: "#00ff12" }, w: { bg: "", box: "#ffffff" } };
 function swatch(of) {
   if (!of) return null;
   if (typeof of === "object") {
@@ -1113,6 +1113,8 @@ function swatch(of) {
   }
   if (/^(20 mil|49″ 20 mil)/.test(of)) return SW.y;
   if (/^28 mil/.test(of)) return SW.o;
+  if (of === "printer CSI") return SW.y;          // CSI labels: plain, yellow here like the old printer's 20 mil
+  if (of === "printer P4") return SW.g;           // P4 labels: bright green frame
   if (/^AG /.test(of)) return SW.m;
   if (of === "Textured") return SW.w;
   if (of === "Doughboy") return SW.y;
@@ -1184,7 +1186,7 @@ function openPicker(onPick) {
     <input class="search" id="pkFind" placeholder="Type a part#, 2P# or pattern" autocomplete="off" style="margin-top:12px">
     <div id="pkResults" hidden></div>
     <div id="pkDrop" style="display:grid;gap:12px;margin-top:12px">
-      <label style="display:grid;gap:4px;font-weight:600">Printer<select id="pkPrinter" ${sel}></select></label>
+      <label style="display:grid;gap:4px;font-weight:600">Printer<span class="swrow"><select id="pkPrinter" ${sel}></select><span class="sw" id="pkPrinterSw" hidden></span><button type="button" class="selcover" data-for="pkPrinter" aria-label="Pick the printer"></button></span></label>
       <label style="display:grid;gap:4px;font-weight:600">Type<span class="swrow"><select id="pkGroup" ${sel}></select><span class="sw" id="pkGroupSw" hidden></span><button type="button" class="selcover" data-for="pkGroup" aria-label="Pick the type"></button></span></label>
       <label style="display:grid;gap:4px;font-weight:600">Pattern<span class="swrow"><select id="pkPart" ${sel}></select><span class="sw" id="pkPartSw" hidden></span><button type="button" class="selcover" data-for="pkPart" aria-label="Pick the pattern"></button></span></label>
       <div id="pkInfo" class="meta"></div>
@@ -1202,7 +1204,7 @@ function openPicker(onPick) {
     paint(el);
   };
   const printers = ["CSI", "P4", "Bead & poly", "Boxes"].filter(p => all.some(i => printerOf(i) === p));
-  opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
+  opts(P, printers.map(p => ({ value: p, swatchOf: "printer " + p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
   const fillGroups = keep => {
     const names = [...GROUPS.map(g => g.name), "Other"].filter(n => all.some(i => printerOf(i) === P.value && groupOf(i) === n));
     opts(G, names.map(n => ({ value: n, label: n, swatchOf: n })), keep);
@@ -1217,7 +1219,7 @@ function openPicker(onPick) {
     showInfo();
   };
   const showInfo = () => { const it = items.get(T.value); $("pkInfo").innerHTML = it ? `${milBadge(it)} ${esc(it.part)} · ${esc(desc(it))}${it.vendor ? " · " + esc(it.vendor) : ""}` : ""; };
-  P.onchange = () => fillGroups(); G.onchange = () => { paint(G); fillParts(); }; T.onchange = () => { paint(T); showInfo(); };
+  P.onchange = () => { paint(P); fillGroups(); }; G.onchange = () => { paint(G); fillParts(); }; T.onchange = () => { paint(T); showInfo(); };
   fillGroups(pickMemory.group);
   $("pkCancel").onclick = () => { if (!onPick) mfrPending = null; close(); };
   $("pkGo").onclick = () => { if (!T.value) return; pickMemory = { printer: P.value, group: G.value }; choose(T.value); };

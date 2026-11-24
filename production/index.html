@@ -341,7 +341,7 @@ const pickOrder = (a, b) => boxRank(a) - boxRank(b) || (a.kind === "Box" ? boxBa
 /* the skid label's colors on the dropdowns: Type by mil (20 yellow, 28 orange, AG 11/13/17 mint, textured white),
    boxes by their size strip (X-small orange, small yellow, medium mint, large lavender).
    The exact color: a box beside the dropdown and the closed dropdown itself (and the open list where the phone allows it). */
-const SW = { y: { bg: "#ffff31" }, o: { bg: "#ff8056" }, m: { bg: "#a0ffd1" }, l: { bg: "#d2b4ff" }, w: { bg: "", box: "#ffffff" } };
+const SW = { y: { bg: "#ffff31" }, o: { bg: "#ff8056" }, m: { bg: "#a0ffd1" }, l: { bg: "#d2b4ff" }, g: { bg: "#00ff12" }, w: { bg: "", box: "#ffffff" } };
 function swatch(of) {
   if (!of) return null;
   if (typeof of === "object") {
@@ -350,6 +350,8 @@ function swatch(of) {
   }
   if (/^(20 mil|49″ 20 mil)/.test(of)) return SW.y;
   if (/^28 mil/.test(of)) return SW.o;
+  if (of === "printer CSI") return SW.y;          // CSI labels: plain, yellow here like the old printer's 20 mil
+  if (of === "printer P4") return SW.g;           // P4 labels: bright green frame
   if (/^AG /.test(of)) return SW.m;
   if (of === "Textured") return SW.w;
   if (of === "Doughboy") return SW.y;
@@ -413,7 +415,7 @@ function openPicker() {
   scrim.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pkTitle">
     <h2 id="pkTitle">Manual Search</h2>
     <div class="pk">
-      <label>Printer<select id="pkPrinter"></select></label>
+      <label>Printer<span class="swrow"><select id="pkPrinter"></select><span class="sw" id="pkPrinterSw" hidden></span><button type="button" class="selcover" data-for="pkPrinter" aria-label="Pick the printer"></button></span></label>
       <label>Type<span class="swrow"><select id="pkGroup"></select><span class="sw" id="pkGroupSw" hidden></span><button type="button" class="selcover" data-for="pkGroup" aria-label="Pick the type"></button></span></label>
       <label>Pattern<span class="swrow"><select id="pkPart"></select><span class="sw" id="pkPartSw" hidden></span><button type="button" class="selcover" data-for="pkPart" aria-label="Pick the pattern"></button></span></label>
     </div>
@@ -430,7 +432,7 @@ function openPicker() {
     paint(el);
   };
   const printers = ["CSI", "P4", "Bead & poly", "Boxes"].filter(p => all.some(i => printerOf(i) === p));
-  opts(P, printers.map(p => ({ value: p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
+  opts(P, printers.map(p => ({ value: p, swatchOf: "printer " + p, label: p === "CSI" ? "CSI (old printer)" : p === "P4" ? "P4 (printer #4)" : p })), pickMemory.printer);
   const fillParts = () => {
     const hits = all.filter(i => printerOf(i) === P.value && groupOf(i) === G.value)
       .sort(pickOrder);
@@ -443,7 +445,7 @@ function openPicker() {
     opts(G, names.map(n => ({ value: n, label: n, swatchOf: n })), keep);
     fillParts();
   };
-  P.onchange = () => fillGroups(); G.onchange = () => { paint(G); fillParts(); }; T.onchange = () => paint(T);
+  P.onchange = () => { paint(P); fillGroups(); }; G.onchange = () => { paint(G); fillParts(); }; T.onchange = () => paint(T);
   fillGroups(pickMemory.group);
   $("pkGo").onclick = () => {
     if (!T.value) return;
