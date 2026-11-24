@@ -59,6 +59,10 @@ header .asof b { display: block; font: 700 20px/1 var(--num); }
 .manual { margin-top: 10px; width: 100%; min-height: 60px; border: 2px solid var(--line); border-radius: 14px; background: var(--surface); font: 700 19px var(--font); }
 .pk { display: grid; gap: 12px; margin-top: 14px; }
 .pk label { display: grid; gap: 4px; font-weight: 600; }
+/* the exact label color beside a dropdown (Type by mil, boxes by size) */
+.swrow { display: flex; gap: 8px; align-items: center; }
+.swrow select { flex: 1; min-width: 0; }
+.sw { flex: none; width: 46px; height: 46px; border-radius: 8px; border: 2px solid var(--ink); }
 .pk select { width: 100%; font: 600 19px var(--font); padding: 12px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
 .pkbtns { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 16px; }
 .pkbtns .btn2 { margin-top: 0; }
@@ -321,9 +325,8 @@ const pickOrder = (a, b) => boxRank(a) - boxRank(b) || (a.kind === "Box" ? boxBa
   || pickLabel(a).localeCompare(pickLabel(b)) || a.part.localeCompare(b.part);
 /* the skid label's colors on the dropdowns: Type by mil (20 yellow, 28 orange, AG 11/13/17 mint, textured white),
    boxes by their size strip (X-small orange, small yellow, medium mint, large lavender).
-   A colored square in front of the name (shows on every phone) plus the background where the phone allows it. */
-const SW = { y: { bg: "#ffff31", mark: "\u{1F7E8}" }, o: { bg: "#ff8056", mark: "\u{1F7E7}" }, m: { bg: "#a0ffd1", mark: "\u{1F7E9}" },
-             l: { bg: "#d2b4ff", mark: "\u{1F7EA}" }, w: { bg: "", mark: "\u{2B1C}" } };
+   The exact color: a box beside the dropdown and the closed dropdown itself (and the open list where the phone allows it). */
+const SW = { y: { bg: "#ffff31" }, o: { bg: "#ff8056" }, m: { bg: "#a0ffd1" }, l: { bg: "#d2b4ff" }, w: { bg: "", box: "#ffffff" } };
 function swatch(of) {
   if (!of) return null;
   if (typeof of === "object") {
@@ -340,6 +343,8 @@ function swatch(of) {
 function paint(el) {
   const o = el.options[el.selectedIndex], bg = o?.dataset.bg || "";
   el.style.background = bg; el.style.color = bg ? "#222" : "";
+  const box = document.getElementById(el.id + "Sw"), c = o?.dataset.box || "";
+  if (box) { box.hidden = !c; box.style.background = c; }
 }
 function pickLabel(i) {
   if (i.kind === "Bead") return i.name.replace(/\s*Bead\s*\([^)]*\)\s*$/, "");
@@ -360,8 +365,8 @@ function openPicker() {
     <h2 id="pkTitle">Manual Search</h2>
     <div class="pk">
       <label>Printer<select id="pkPrinter"></select></label>
-      <label>Type<select id="pkGroup"></select></label>
-      <label>Pattern<select id="pkPart"></select></label>
+      <label>Type<span class="swrow"><select id="pkGroup"></select><span class="sw" id="pkGroupSw" hidden></span></span></label>
+      <label>Pattern<span class="swrow"><select id="pkPart"></select><span class="sw" id="pkPartSw" hidden></span></span></label>
     </div>
     <div class="pkbtns">
       <button class="close" type="button" data-close>Cancel</button>
@@ -371,7 +376,7 @@ function openPicker() {
   const P = $("pkPrinter"), G = $("pkGroup"), T = $("pkPart");
   const opts = (el, values, keep) => {
     el.innerHTML = values.map(v => { const s = swatch(v.swatchOf);
-      return `<option value="${esc(v.value)}"${s?.bg ? ` data-bg="${s.bg}" style="background:${s.bg};color:#222"` : ""}>${s ? s.mark + " " : ""}${esc(v.label)}</option>`; }).join("");
+      return `<option value="${esc(v.value)}"${s ? ` data-bg="${s.bg}" data-box="${s.box || s.bg}"` : ""}${s?.bg ? ` style="background:${s.bg};color:#222"` : ""}>${esc(v.label)}</option>`; }).join("");
     if (keep && values.some(v => v.value === keep)) el.value = keep;
     paint(el);
   };
